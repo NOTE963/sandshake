@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SAND SHAKE</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+Rounded+1c:wght@500;800&display=swap">
+<style>
+:root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #e6ebf5;
+  --panel: #ffffff;
+  --ink: #1c2233;
+  --muted: #5d667e;
+  --frame: #2a3350;
+  --well: #f7f9fe;
+  --danger: #e5484d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10131c; --panel: #1b2033; --ink: #e8ecf7; --muted: #8b94ad;
+    --frame: #46527a; --well: #171b29; --danger: #ff6369;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10131c; --panel: #1b2033; --ink: #e8ecf7; --muted: #8b94ad;
+  --frame: #46527a; --well: #171b29; --danger: #ff6369;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); height: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.hud { flex: none; display: flex; align-items: center; gap: 16px; padding: 10px 16px 2px; }
+.stat { display: flex; flex-direction: column; line-height: 1.1; }
+.stat span, .next span { font-size: 11px; color: var(--muted); font-weight: 500; }
+.stat b { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat b.sm { font-size: 17px; line-height: 1.5; }
+.stat b.warn { color: var(--danger); }
+.next { display: flex; flex-direction: column; gap: 4px; margin-left: auto; }
+.next span { line-height: 1.1; }
+.next i { display: block; width: 26px; height: 22px; border-radius: 7px; background: #999; }
+#stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 12px;
+  overflow: hidden;
+  touch-action: none;
+}
+#frame {
+  position: relative;
+  flex: none;
+  border: 5px solid var(--frame);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+  background: var(--well);
+  overflow: hidden;
+  line-height: 0;
+  will-change: transform;
+}
+#cv { display: block; }
+#pop {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  font-family: "DotGothic16", "M PLUS Rounded 1c", sans-serif;
+  font-size: 40px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  color: var(--ink);
+  text-shadow: 0 0 6px var(--bg), 0 0 12px var(--bg), 0 0 18px var(--bg);
+  z-index: 4;
+}
+#pop.show { animation: pop 1000ms ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); }
+  18% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -44px) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pop.show { animation: popfade 1000ms linear; }
+  @keyframes popfade { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+}
+.pad { flex: none; display: flex; gap: 12px; padding: 4px 16px 12px; }
+.pad button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid var(--frame);
+  border-radius: 16px;
+  padding: 14px 10px;
+}
+.pad button:active { background: var(--frame); color: var(--bg); }
+.pad svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* overlay + screens */
+.ov {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  z-index: 5;
+}
+.ov[hidden] { display: none; }
+.card {
+  width: min(100%, 350px);
+  max-height: 100%;
+  overflow: auto;
+  background: var(--panel);
+  border: 3px solid var(--frame);
+  border-radius: 22px;
+  padding: 22px 20px 18px;
+  text-align: center;
+}
+.card[hidden] { display: none; }
+.card h2 {
+  margin: 0 0 14px;
+  font-family: "DotGothic16", "M PLUS Rounded 1c", sans-serif;
+  font-weight: 400;
+  font-size: 26px;
+  letter-spacing: .08em;
+  line-height: 1.2;
+}
+#title { display: block; width: 100%; max-width: 300px; height: auto; margin: 4px auto 14px; overflow: visible; }
+.tag { margin: 0 0 6px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.bestline { margin: 0 0 16px; font-family: "DotGothic16", sans-serif; font-size: 15px; min-height: 1.4em; }
+.btns { display: flex; flex-direction: column; gap: 10px; }
+.btn {
+  font: inherit;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid var(--frame);
+  border-radius: 14px;
+  padding: 13px 20px;
+  width: 100%;
+}
+.btn.primary { color: var(--bg); background: var(--ink); border-color: var(--ink); font-size: 18px; padding: 15px 20px; }
+.btn:active { transform: scale(.98); }
+.btn:focus-visible, .pad button:focus-visible, #nameIn:focus-visible { outline: 3px solid #4a6cf7; outline-offset: 2px; }
+.rules { margin: 0 0 16px; padding: 0; list-style: none; text-align: left; font-size: 14px; line-height: 1.65; }
+.rules li { position: relative; padding-left: 22px; margin-bottom: 9px; }
+.rules li::before { content: ""; position: absolute; left: 2px; top: .55em; width: 10px; height: 10px; border-radius: 3px; background: var(--c, var(--muted)); }
+.score { font-size: 15px; line-height: 1.7; margin: 0 0 8px; color: var(--muted); }
+.score b { font-family: "DotGothic16", sans-serif; font-weight: 400; font-size: 48px; color: var(--ink); display: block; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.rankmsg { min-height: 1.6em; margin: 0 0 16px; font-size: 14px; color: var(--ink); }
+.rank { list-style: none; margin: 0 0 10px; padding: 0; max-height: 36vh; overflow: auto; text-align: left; font-size: 15px; }
+.rank li { display: grid; grid-template-columns: 2.6em 1fr auto; gap: 8px; padding: 6px 8px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+.rank li.me { background: color-mix(in srgb, var(--ink) 12%, transparent); font-weight: 800; }
+.rank .n { font-family: "DotGothic16", sans-serif; color: var(--muted); }
+.rank .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .sc { font-family: "DotGothic16", sans-serif; font-size: 17px; }
+.rankstate { font-size: 13px; color: var(--muted); min-height: 1.5em; margin: 0 0 8px; line-height: 1.5; }
+.namebox { display: flex; gap: 8px; margin: 0 0 12px; }
+#nameIn {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--well);
+  border: 2px solid var(--frame);
+  border-radius: 12px;
+  padding: 9px 12px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.namebox .btn { width: auto; padding: 9px 16px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header class="hud">
+  <div class="stat"><span>スコア</span><b id="score">0</b></div>
+  <div class="stat"><span>レベル</span><b id="lv">1</b></div>
+  <div class="stat"><span>こぼれ</span><b id="spill" class="sm">0/80</b></div>
+  <div class="next"><span>つぎ</span><i id="chip"></i></div>
+</header>
+<main id="stage">
+  <div id="frame"><canvas id="cv"></canvas></div>
+  <div id="pop"></div>
+
+  <div class="ov" id="ov">
+    <!-- HOME -->
+    <section class="card" id="vHome">
+      <svg id="title" role="img" aria-label="SAND SHAKE"></svg>
+      <p class="tag">枠を傾けて、同じ色の砂をそろえて消そう</p>
+      <p class="bestline" id="homeBest"></p>
+      <div class="btns">
+        <button class="btn primary" type="button" data-act="start">はじめる</button>
+        <button class="btn" type="button" data-act="rank">ランキング</button>
+        <button class="btn" type="button" data-act="rules">あそびかた</button>
+      </div>
+    </section>
+
+    <!-- RULES -->
+    <section class="card" id="vRules" hidden>
+      <h2>あそびかた</h2>
+      <ul class="rules" id="rulesList"></ul>
+      <button class="btn" type="button" data-act="home">もどる</button>
+    </section>
+
+    <!-- RANKING -->
+    <section class="card" id="vRank" hidden>
+      <h2>ランキング</h2>
+      <p class="rankstate" id="rankState"></p>
+      <ol class="rank" id="rankList"></ol>
+      <div class="namebox">
+        <input id="nameIn" type="text" maxlength="10" placeholder="なまえ(10文字まで)" autocomplete="off" aria-label="ニックネーム">
+        <button class="btn" type="button" id="nameSave">保存</button>
+      </div>
+      <button class="btn" type="button" data-act="home">もどる</button>
+    </section>
+
+    <!-- GAME OVER -->
+    <section class="card" id="vOver" hidden>
+      <h2 id="ovT"></h2>
+      <p class="score">スコア<b id="ovScore">0</b><span id="ovBest"></span></p>
+      <p class="rankmsg" id="ovRank"></p>
+      <div class="btns">
+        <button class="btn primary" type="button" data-act="start">もういちど</button>
+        <button class="btn" type="button" data-act="rank">ランキング</button>
+        <button class="btn" type="button" data-act="home">ホーム</button>
+      </div>
+    </section>
+  </div>
+</main>
+<div class="pad">
+  <button id="bL" type="button" aria-label="左に傾ける">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>ひだりに傾ける
+  </button>
+  <button id="bR" type="button" aria-label="右に傾ける">
+    みぎに傾ける<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+  </button>
+</div>
+
+<script>
+// ============================================================
+//  Firebase (anonymous auth + Firestore ranking)
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyC2y2yyzcHr5Lfh1CPhOI8ABDASmy0v1e4",
+  authDomain: "sand-shake.firebaseapp.com",
+  projectId: "sand-shake",
+  storageBucket: "sand-shake.firebasestorage.app",
+  messagingSenderId: "903859599063",
+  appId: "1:903859599063:web:0a1ad317f217f0bb25a292",
+  measurementId: "G-V8FNFSXP8H"
+};
+const FB_VER = '10.12.2';
+const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
+
+(() => {
+  const W = 60, H = 72, N = W * H, WARN_ROW = 8, SPILL_MAX = 80;
+  const PAL = ['#ef5b5b', '#f7b733', '#1fb5a5', '#4a6cf7', '#b45cd6'];
+  const SHADES = 6;
+  const WHITE = 0xFFFFFFFF;
+
+  const pal = new Uint32Array(PAL.length * SHADES);
+  PAL.forEach((hex, ci) => {
+    const r = parseInt(hex.slice(1, 3), 16), gg0 = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    for (let s = 0; s < SHADES; s++) {
+      const f = 0.82 + s * 0.06;
+      const rr = Math.min(255, Math.round(r * f)), gg = Math.min(255, Math.round(gg0 * f)), bb = Math.min(255, Math.round(b * f));
+      pal[ci * SHADES + s] = ((255 << 24) | (bb << 16) | (gg << 8) | rr) >>> 0;
+    }
+  });
+
+  const g = new Uint8Array(N);
+  const sh = new Uint8Array(N);
+  const fl = new Uint8Array(N);
+  const visited = new Uint8Array(N);
+  const stack = new Int32Array(N);
+  const list = new Int32Array(N);
+
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const stage = $('stage'), frame = $('frame');
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(W, H);
+  const buf = new Uint32Array(img.data.buffer);
+
+  let CELL = 6, DPR = 1, FW = 300, FH = 360, AW = 300, AH = 400;
+  let state = 'ready';
+  let score = 0, level = 1, best = 0, spilled = 0;
+  let spawnT = 0, blocked = 0, frameNo = 0, lastColor = 0;
+  let nextBlob = null, flip = false;
+  let theta = 0, thetaT = 0, dragging = false, dragX0 = 0, dragTh0 = 0;
+  let GX = 0, GY = 1;
+  let dangerColor = '#e5484d';
+  let playerName = '';
+
+  // ---------- local storage (best score / nickname) ----------
+  try { best = parseInt(localStorage.getItem('sandshake-best') || '0', 10) || 0; } catch (e) {}
+  try { playerName = localStorage.getItem('sandshake-name') || ''; } catch (e) {}
+  if (!playerName) {
+    playerName = 'ゲスト' + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    try { localStorage.setItem('sandshake-name', playerName); } catch (e) {}
+  }
+  const cleanName = s => [...String(s).replace(/[\u0000-\u001f<>]/g, '').trim()].slice(0, 10).join('');
+
+  // ============================================================
+  //  Firebase helpers
+  // ============================================================
+  let fbP = null;
+  function ensureFb() {
+    if (fbP) return fbP;
+    fbP = (async () => {
+      const [appM, authM, fs] = await Promise.all([
+        import(FB_BASE + 'firebase-app.js'),
+        import(FB_BASE + 'firebase-auth.js'),
+        import(FB_BASE + 'firebase-firestore.js')
+      ]);
+      const app = appM.getApps().length ? appM.getApp() : appM.initializeApp(firebaseConfig);
+      const auth = authM.getAuth(app);
+      await auth.authStateReady();
+      const user = auth.currentUser || (await authM.signInAnonymously(auth)).user;
+      return { fs, db: fs.getFirestore(app), uid: user.uid };
+    })().catch(e => { fbP = null; throw e; });
+    return fbP;
+  }
+
+  // submit score (only if it beats the player's stored best); returns { mine, rank }
+  async function submitScore(sc, lv) {
+    const { fs, db, uid } = await ensureFb();
+    const ref = fs.doc(db, 'scores', uid);
+    const snap = await fs.getDoc(ref);
+    let mine = snap.exists() ? snap.data().score : 0;
+    if (sc > mine) {
+      await fs.setDoc(ref, { name: playerName, score: sc, level: lv, updatedAt: fs.serverTimestamp() });
+      mine = sc;
+    }
+    const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', mine)));
+    return { mine, rank: cnt.data().count + 1 };
+  }
+
+  async function loadRanking() {
+    const { fs, db, uid } = await ensureFb();
+    const q = fs.query(fs.collection(db, 'scores'), fs.orderBy('score', 'desc'), fs.limit(30));
+    const snaps = await fs.getDocs(q);
+    const rows = [];
+    snaps.forEach(d => rows.push({ id: d.id, ...d.data() }));
+    let me = null;
+    const mySnap = await fs.getDoc(fs.doc(db, 'scores', uid));
+    if (mySnap.exists()) {
+      const s = mySnap.data().score;
+      const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', s)));
+      me = { score: s, rank: cnt.data().count + 1 };
+    }
+    return { rows, uid, me };
+  }
+
+  async function renameOnServer(name) {
+    const { fs, db, uid } = await ensureFb();
+    const ref = fs.doc(db, 'scores', uid);
+    const snap = await fs.getDoc(ref);
+    if (snap.exists()) await fs.updateDoc(ref, { name, updatedAt: fs.serverTimestamp() });
+  }
+
+  // ============================================================
+  //  Screens
+  // ============================================================
+  const VIEWS = ['vHome', 'vRules', 'vRank', 'vOver'];
+  function show(id) {
+    VIEWS.forEach(v => { $(v).hidden = (v !== id); });
+    $('ov').hidden = false;
+    if (id === 'vHome') {
+      $('homeBest').textContent = best > 0 ? 'ベスト ' + best : '';
+    }
+  }
+
+  // dot-font title built from a 5x7 bitmap font
+  const FONT = {
+    S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+    A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+    N: ['10001', '11001', '10101', '10101', '10101', '10011', '10001'],
+    D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+    H: ['10001', '10001', '10001', '11111', '10001', '10001', '10001'],
+    K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'],
+    E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111']
+  };
+  function buildTitle() {
+    const lines = [
+      { t: 'SAND', c: [0, 1, 2, 3] },
+      { t: 'SHAKE', c: [4, 0, 1, 2, 3] }
+    ];
+    const totalW = 29, lineH = 7, gap = 2;
+    let out = '';
+    lines.forEach((ln, li) => {
+      const wLine = ln.t.length * 5 + (ln.t.length - 1);
+      let ox = (totalW - wLine) / 2;
+      const oy = li * (lineH + gap);
+      [...ln.t].forEach((ch, ci) => {
+        const rows = FONT[ch];
+        const col = PAL[ln.c[ci]];
+        for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) {
+          if (rows[y][x] !== '1') continue;
+          const px = ox + x, py = oy + y;
+          const v = 0.8 + ((x * 7 + y * 13 + ci * 5) % 5) * 0.05;
+          out += '<rect x="' + (px + 0.14) + '" y="' + (py + 0.14) + '" width="0.88" height="0.88" rx="0.2" style="fill:var(--frame)" opacity="0.28"/>';
+          out += '<rect x="' + px + '" y="' + py + '" width="0.88" height="0.88" rx="0.2" fill="' + col + '" opacity="' + v.toFixed(2) + '"/>';
+        }
+        ox += 6;
+      });
+    });
+    const svg = $('title');
+    svg.setAttribute('viewBox', '-0.5 -0.5 ' + (totalW + 1) + ' ' + (lineH * 2 + gap + 1));
+    svg.innerHTML = out;
+  }
+
+  function buildRules() {
+    const items = [
+      [0, '上から色つきの砂のかたまりが、枠の中へ入ってくる。'],
+      [1, '枠を横になぞるか、下のボタンで枠を傾ける(ボタン1回で45°)。砂は低くなった側へ流れる。'],
+      [2, '同じ色の砂が、枠の左右の壁、または上下の壁までつながると消える。ななめのつながりも有効。'],
+      [3, '消えた砂の数がそのままスコアになる。'],
+      [4, '800点ごとにレベルアップ。色が増えて(最大5色)、砂が降るペースも速くなる。'],
+      [0, '枠の上は開いている。90°を超えて傾けると砂がこぼれる。こぼれた砂が80粒になると終わり。'],
+      [1, '砂が積もって上から砂が入れなくなったら終わり。赤い点線が積もりすぎの目安。'],
+      [2, 'スコアは匿名でランキングに載る(登録はいちばん高いスコアだけ)。名前はランキング画面で変えられる。']
+    ];
+    $('rulesList').innerHTML = items.map(([c, t]) => '<li style="--c:' + PAL[c] + '">' + t + '</li>').join('');
+  }
+
+  async function openRank() {
+    show('vRank');
+    $('nameIn').value = playerName;
+    const st = $('rankState'), ol = $('rankList');
+    st.textContent = '読み込み中…';
+    ol.innerHTML = '';
+    try {
+      const { rows, uid, me } = await loadRanking();
+      if (!rows.length) {
+        st.textContent = 'まだ誰も登録していません。最初の1位をねらおう!';
+      } else {
+        st.textContent = me ? 'あなたは ' + me.rank + '位(' + me.score + '点)' : 'まだスコアが登録されていません';
+      }
+      rows.forEach((r, i) => {
+        const li = document.createElement('li');
+        if (r.id === uid) li.className = 'me';
+        const n = document.createElement('span'); n.className = 'n'; n.textContent = (i + 1);
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name || 'ななし';
+        const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = r.score;
+        li.append(n, nm, sc);
+        ol.appendChild(li);
+      });
+    } catch (e) {
+      console.error(e);
+      st.textContent = 'ランキングにつながりません。通信と Firebase の設定(匿名認証・Firestore・ルール)を確認してください。';
+    }
+  }
+
+  $('nameSave').addEventListener('click', async () => {
+    const nm = cleanName($('nameIn').value);
+    if (!nm) { $('nameIn').value = playerName; return; }
+    playerName = nm;
+    $('nameIn').value = nm;
+    try { localStorage.setItem('sandshake-name', nm); } catch (e) {}
+    try { await renameOnServer(nm); } catch (e) { console.error(e); }
+    openRank();
+  });
+
+  $('ov').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const a = b.dataset.act;
+    if (a === 'start') startGame();
+    else if (a === 'home') show('vHome');
+    else if (a === 'rules') show('vRules');
+    else if (a === 'rank') openRank();
+  });
+
+  // ============================================================
+  //  Game
+  // ============================================================
+  const numColors = () => Math.min(5, 1 + level);
+  const interval = () => Math.max(40, 90 - (level - 1) * 8);
+
+  function swap(i, j) {
+    let t = g[i]; g[i] = g[j]; g[j] = t;
+    t = sh[i]; sh[i] = sh[j]; sh[j] = t;
+  }
+
+  function makeBlob() {
+    let c = 1 + Math.floor(Math.random() * numColors());
+    if (c === lastColor && Math.random() < 0.6) c = 1 + Math.floor(Math.random() * numColors());
+    lastColor = c;
+    const w = 8 + Math.floor(Math.random() * 7);
+    const h = 4 + Math.floor(Math.random() * 3);
+    const x = Math.floor(Math.random() * (W - w + 1));
+    return { c, w, h, x };
+  }
+  function spawn() {
+    const b = nextBlob;
+    for (let y = 0; y < b.h; y++)
+      for (let x = b.x; x < b.x + b.w; x++)
+        if (g[y * W + x]) return false;
+    for (let y = 0; y < b.h; y++) {
+      for (let x = 0; x < b.w; x++) {
+        if ((y === 0 || y === b.h - 1) && (x === 0 || x === b.w - 1)) continue;
+        const i = y * W + b.x + x;
+        g[i] = b.c;
+        sh[i] = Math.floor(Math.random() * SHADES);
+      }
+    }
+    nextBlob = makeBlob();
+    updateChip();
+    return true;
+  }
+
+  // sand simulation with 8-direction gravity (frame coordinates)
+  let CARD = true, A1X = 1, A1Y = 1, A2X = -1, A2Y = 1;
+  function mv(i, x, y, dx, dy) {
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || nx >= W || ny >= H) return false;
+    if (ny < 0) { g[i] = 0; sh[i] = 0; spilled++; return true; }
+    const j = ny * W + nx;
+    if (g[j]) return false;
+    swap(i, j);
+    return true;
+  }
+  function cell(x, y) {
+    const i = y * W + x;
+    if (!g[i] || fl[i]) return;
+    if (mv(i, x, y, GX, GY)) return;
+    const first = Math.random() < 0.5;
+    for (let t = 0; t < 2; t++) {
+      const k = ((t === 0) === first) ? 0 : 1;
+      const ax = k ? A2X : A1X, ay = k ? A2Y : A1Y;
+      if (CARD) {
+        const sx = x + ax - GX, sy = y + ay - GY;
+        if (sx < 0 || sx >= W || sy < 0 || sy >= H || g[sy * W + sx]) continue;
+      }
+      if (mv(i, x, y, ax, ay)) return;
+    }
+  }
+  function setGravity() {
+    const rad = thetaT * Math.PI / 180;
+    GX = Math.round(Math.sin(rad)) | 0;
+    GY = Math.round(Math.cos(rad)) | 0;
+    CARD = (GX === 0 || GY === 0);
+    if (CARD) {
+      const px = GY !== 0 ? 1 : 0, py = GX !== 0 ? 1 : 0;
+      A1X = GX + px; A1Y = GY + py; A2X = GX - px; A2Y = GY - py;
+    } else {
+      A1X = GX; A1Y = 0; A2X = 0; A2Y = GY;
+    }
+  }
+  function simStep() {
+    flip = !flip;
+    if (GX !== 0 && GY === 0) {
+      for (let xk = 0; xk < W; xk++) {
+        const x = GX > 0 ? W - 1 - xk : xk;
+        for (let yk = 0; yk < H; yk++) cell(x, flip ? yk : H - 1 - yk);
+      }
+    } else {
+      for (let yk = 0; yk < H; yk++) {
+        const y = GY > 0 ? H - 1 - yk : yk;
+        for (let xk = 0; xk < W; xk++) {
+          const x = GX > 0 ? W - 1 - xk : (GX < 0 ? xk : (flip ? xk : W - 1 - xk));
+          cell(x, y);
+        }
+      }
+    }
+  }
+
+  // same-color group touching opposite walls (left-right or top-bottom)
+  function checkClear() {
+    visited.fill(0);
+    let cleared = 0;
+    for (let s = 0; s < N; s++) {
+      const c = g[s];
+      if (!c || fl[s] || visited[s]) continue;
+      let sp = 0, n = 0, tL = false, tR = false, tT = false, tB = false;
+      stack[sp++] = s; visited[s] = 1;
+      while (sp) {
+        const i = stack[--sp];
+        list[n++] = i;
+        const x = i % W, yy = (i / W) | 0;
+        if (x === 0) tL = true;
+        if (x === W - 1) tR = true;
+        if (yy === 0) tT = true;
+        if (yy === H - 1) tB = true;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = yy + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const j = ny * W + nx;
+            if (!visited[j] && g[j] === c && !fl[j]) { visited[j] = 1; stack[sp++] = j; }
+          }
+        }
+      }
+      if ((tL && tR) || (tT && tB)) {
+        for (let k = 0; k < n; k++) fl[list[k]] = 22;
+        cleared += n;
+      }
+    }
+    if (cleared > 0) {
+      score += cleared;
+      showPop('+' + cleared);
+      try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
+      const nl = 1 + Math.floor(score / 800);
+      if (nl > level) { level = nl; setTimeout(() => showPop('LEVEL ' + level), 700); }
+      updateHUD();
+    }
+  }
+
+  // tilting the frame
+  stage.addEventListener('pointerdown', e => {
+    if (state !== 'play') return;
+    dragging = true; dragX0 = e.clientX; dragTh0 = theta;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!dragging || state !== 'play') return;
+    theta = dragTh0 + (e.clientX - dragX0) * 0.55;
+    thetaT = Math.round(theta / 45) * 45;
+  });
+  const endDrag = () => { dragging = false; };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  $('bL').addEventListener('click', () => { if (state === 'play') thetaT -= 45; });
+  $('bR').addEventListener('click', () => { if (state === 'play') thetaT += 45; });
+
+  function updateHUD() {
+    $('score').textContent = score;
+    $('lv').textContent = level;
+    const s = $('spill');
+    s.textContent = spilled + '/' + SPILL_MAX;
+    s.classList.toggle('warn', spilled > SPILL_MAX * 0.5);
+  }
+  function updateChip() { $('chip').style.background = PAL[nextBlob.c - 1]; }
+  function showPop(t) {
+    const p = $('pop');
+    p.textContent = t;
+    p.classList.remove('show');
+    void p.offsetWidth;
+    p.classList.add('show');
+  }
+
+  function gameOver(spillOut) {
+    state = 'over';
+    dragging = false;
+    const finalScore = score, finalLevel = level;
+    const isBest = finalScore > best;
+    if (isBest) { best = finalScore; try { localStorage.setItem('sandshake-best', String(best)); } catch (e) {} }
+    $('ovT').textContent = spillOut ? 'こぼれた!' : 'あふれた!';
+    $('ovScore').textContent = finalScore;
+    $('ovBest').textContent = isBest ? '自己ベスト更新!' : 'ベスト ' + best;
+    $('ovRank').textContent = '';
+    show('vOver');
+    try { navigator.vibrate && navigator.vibrate([60, 40, 60]); } catch (e) {}
+
+    if (finalScore > 0) {
+      $('ovRank').textContent = 'ランキングに登録中…';
+      submitScore(finalScore, finalLevel).then(r => {
+        if (state === 'over') $('ovRank').textContent = 'ランキング ' + r.rank + '位(あなたの最高 ' + r.mine + '点)';
+      }).catch(e => {
+        console.error(e);
+        if (state === 'over') $('ovRank').textContent = 'ランキングにつながりませんでした';
+      });
+    }
+  }
+  function startGame() {
+    g.fill(0); sh.fill(0); fl.fill(0);
+    score = 0; level = 1; spilled = 0; spawnT = 0; blocked = 0; frameNo = 0; lastColor = 0;
+    theta = thetaT = 0; dragging = false;
+    setGravity();
+    nextBlob = makeBlob();
+    updateChip(); updateHUD();
+    $('ov').hidden = true;
+    state = 'play';
+  }
+
+  function tick() {
+    if (state !== 'play') return;
+    setGravity();
+    if (GY >= 0) {
+      spawnT++;
+      if (spawnT >= interval()) {
+        if (spawn()) { spawnT = 0; blocked = 0; }
+        else if (++blocked > 90) { gameOver(false); return; }
+      }
+    }
+    const before = spilled;
+    simStep();
+    simStep();
+    for (let i = 0; i < N; i++) {
+      if (fl[i] && --fl[i] === 0) g[i] = 0;
+    }
+    if (spilled !== before) {
+      updateHUD();
+      if (spilled >= SPILL_MAX) { gameOver(true); return; }
+    }
+    frameNo++;
+    if (frameNo % 5 === 0) checkClear();
+  }
+
+  function applyTransform() {
+    const r = theta * Math.PI / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
+    const bw = FW * c + FH * s, bh = FW * s + FH * c;
+    const k = Math.min(1, AW / bw, AH / bh);
+    frame.style.transform = 'rotate(' + theta.toFixed(2) + 'deg) scale(' + k.toFixed(4) + ')';
+  }
+
+  function render(t) {
+    for (let i = 0; i < N; i++) {
+      const c = g[i];
+      if (!c) { buf[i] = 0; continue; }
+      const f = fl[i];
+      buf[i] = (f && ((f >> 1) & 1)) ? WHITE : pal[(c - 1) * SHADES + sh[i]];
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, cv.width, cv.height);
+
+    const pulse = blocked > 0 ? 0.55 + 0.45 * Math.sin(t * 0.02) : 0.55;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = dangerColor;
+    ctx.lineWidth = 2 * DPR;
+    ctx.setLineDash([8 * DPR, 6 * DPR]);
+    ctx.beginPath();
+    ctx.moveTo(0, WARN_ROW * CELL);
+    ctx.lineTo(cv.width, WARN_ROW * CELL);
+    ctx.stroke();
+    ctx.restore();
+
+    if (state === 'play' && nextBlob) {
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = PAL[nextBlob.c - 1];
+      ctx.fillRect(nextBlob.x * CELL, 0, nextBlob.w * CELL, 4 * DPR);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function readTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    dangerColor = cs.getPropertyValue('--danger').trim() || dangerColor;
+  }
+
+  let last = 0, acc = 0, themeT = 0;
+  function loop(t) {
+    requestAnimationFrame(loop);
+    if (!last) last = t;
+    const dt = Math.min(50, t - last);
+    last = t;
+    acc += dt;
+    while (acc >= 16.667) { tick(); acc -= 16.667; }
+    if (!dragging) {
+      const d = thetaT - theta;
+      theta = Math.abs(d) < 0.05 ? thetaT : theta + d * Math.min(1, dt * 0.014);
+    }
+    applyTransform();
+    if (t - themeT > 500) { readTheme(); themeT = t; }
+    render(t);
+  }
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    AW = stage.clientWidth - 24;
+    AH = stage.clientHeight - 16;
+    const css = Math.max(1, Math.min((AW - 10) / W, (AH - 5) / H));
+    CELL = Math.max(2, Math.floor(css * DPR));
+    cv.width = W * CELL;
+    cv.height = H * CELL;
+    cv.style.width = (W * CELL / DPR) + 'px';
+    cv.style.height = (H * CELL / DPR) + 'px';
+    FW = W * CELL / DPR + 10;
+    FH = H * CELL / DPR + 5;
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+
+  buildTitle();
+  buildRules();
+  readTheme();
+  resize();
+  setGravity();
+  show('vHome');
+  ensureFb().catch(e => console.warn('Firebase init failed:', e)); // sign in anonymously in the background
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+<!--
+  Firestore security rules (also saved as firestore.rules) — see the file next to this one.
+-->
