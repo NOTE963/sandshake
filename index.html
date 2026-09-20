@@ -56,20 +56,16 @@ body {
 .next i { display: block; width: 26px; height: 22px; border-radius: 7px; background: #999; }
 #vsBar {
   flex: none;
-  height: 96px;
-  display: grid;
-  grid-template-columns: 1fr 96px 1fr;
-  align-items: center;
-  gap: 4px;
-  padding: 0 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 12px 0;
 }
 #vsBar[hidden] { display: none; }
-.vsSide { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
-.vsSide.r { align-items: flex-end; text-align: right; }
-.vsSide span { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vsSide b { font-family: "DotGothic16", sans-serif; font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }
-#miniWrap { width: 96px; height: 96px; display: grid; place-items: center; }
-#miniFrame {
+.oppCard { display: flex; flex-direction: column; align-items: center; width: 92px; min-width: 0; }
+.miniWrap { position: relative; width: 88px; height: 80px; display: grid; place-items: center; border-radius: 10px; }
+.miniFrame {
   border: 3px solid var(--frame);
   border-top: none;
   border-radius: 0 0 8px 8px;
@@ -77,7 +73,28 @@ body {
   line-height: 0;
   will-change: transform;
 }
-#miniCv { display: block; width: 60px; height: 72px; image-rendering: pixelated; }
+.miniCv { display: block; width: 54px; height: 65px; image-rendering: pixelated; }
+.deadMark {
+  position: absolute; inset: 0; display: none; place-items: center;
+  font-family: "DotGothic16", sans-serif; font-size: 40px; line-height: 1; color: var(--danger);
+}
+.oppCard.dead .deadMark { display: grid; }
+.oppCard.dead .miniFrame { opacity: .3; }
+.oppCard.hit .miniWrap { animation: hitflash .45s ease-out; }
+@keyframes hitflash {
+  0% { box-shadow: 0 0 0 0 var(--danger); background: color-mix(in srgb, var(--danger) 35%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .oppCard.hit .miniWrap { animation: none; background: color-mix(in srgb, var(--danger) 25%, transparent); } }
+.oppInfo { display: flex; align-items: baseline; justify-content: center; gap: 5px; max-width: 100%; line-height: 1.2; }
+.oppInfo span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.oppInfo b { font-family: "DotGothic16", sans-serif; font-weight: 400; font-size: 15px; font-variant-numeric: tabular-nums; }
+.lobby { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.lobby li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; font-size: 15px; }
+.lobby li i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.lobby li em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--muted); }
+.lobby li.me { background: color-mix(in srgb, var(--ink) 10%, transparent); font-weight: 800; }
+.lobby li.empty { color: var(--muted); border: 2px dashed color-mix(in srgb, var(--frame) 40%, transparent); padding: 5px 8px; }
 #vsSub { white-space: pre-line; }
 .waitmsg { margin: 4px 0 14px; font-size: 14px; color: var(--muted); line-height: 1.6; min-height: 3.2em; white-space: pre-line; }
 .dots { display: flex; justify-content: center; gap: 8px; margin: 0 0 18px; }
@@ -267,11 +284,7 @@ body {
     <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><g class="waves"><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></g><g class="xmark"><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></g></svg>
   </button>
 </header>
-<div id="vsBar" hidden>
-  <div class="vsSide"><span id="oppName">あいて</span><b id="oppScore">0</b></div>
-  <div id="miniWrap"><div id="miniFrame"><canvas id="miniCv" width="30" height="36"></canvas></div></div>
-  <div class="vsSide r"><span>おくった砂</span><b id="sentCnt">0</b></div>
-</div>
+<div id="vsBar" hidden></div>
 <main id="stage">
   <div id="frame"><canvas id="cv"></canvas></div>
   <div id="pop"></div>
@@ -324,7 +337,7 @@ body {
     <!-- VERSUS: choose -->
     <section class="card" id="vVs" hidden>
       <h2>対戦</h2>
-      <p class="tag">2人で同時にプレイ。自分が消した砂が、相手の容器に降りそそぐ。先にあふれたほうが負け。</p>
+      <p class="tag">最大4人で同時にプレイ。自分が消した砂が、ほかの誰かの容器に降りそそぐ。最後まで残った人の勝ち。</p>
       <div class="btns">
         <button class="btn primary" type="button" data-act="vsRandom">ランダムマッチ</button>
       </div>
@@ -335,18 +348,23 @@ body {
       <button class="btn" type="button" data-act="home">もどる</button>
     </section>
 
-    <!-- VERSUS: waiting -->
+    <!-- VERSUS: lobby -->
     <section class="card" id="vWait" hidden>
       <h2 id="waitT">対戦</h2>
       <p class="waitmsg" id="waitMsg"></p>
+      <ul class="lobby" id="lobbyList"></ul>
       <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
-      <button class="btn" type="button" data-act="cancelWait">やめる</button>
+      <div class="btns">
+        <button class="btn primary" type="button" id="lobbyStart" data-act="lobbyStart" hidden>いますぐはじめる</button>
+        <button class="btn" type="button" data-act="cancelWait">やめる</button>
+      </div>
     </section>
 
     <!-- VERSUS: result -->
     <section class="card" id="vVsOver" hidden>
       <h2 id="vsT"></h2>
       <p class="score" id="vsSub"></p>
+      <ol class="rank" id="vsRes"></ol>
       <div class="btns">
         <button class="btn primary" type="button" data-act="vs">もういちど対戦</button>
         <button class="btn" type="button" data-act="home">ホーム</button>
@@ -672,9 +690,9 @@ const Sfx = (() => {
       [1, '砂が積もって、かたまりを落とせる場所がなくなったら終わり。赤い点線が積もりすぎの目安。'],
       [2, 'スコアは匿名でランキングに載る(登録は最高スコアのみ)。名前はランキング画面で変えられる。'],
       [3, '効果音は右上のスピーカーボタンでオン/オフできる。'],
-      [4, '【対戦】ランダムマッチ、または同じ合言葉を入れた相手と1対1で同時にプレイ。降ってくる砂のかたまりは2人とも同じ順番。'],
-      [0, '【対戦】砂を消すと、消えた砂の半分(連続で消すほど増える)が、同じ色の砂として相手の容器に降りそそぐ。上の小さな容器が相手の様子。「おじゃま」は自分に降ってくる予定の砂の数。'],
-      [1, '【対戦】先に砂があふれる(または80粒こぼす)ほうが負け。相手の接続が切れたときは勝ちになる。']
+      [4, '【対戦】ランダムマッチ、または同じ合言葉で、最大4人が同時にプレイ。降ってくる砂のかたまりは全員同じ順番。ランダムマッチは、2人以上そろって10秒たつか、4人そろうと始まる。'],
+      [0, '【対戦】砂を消すと、消えた砂の半分(連続で消すほど増える)が、自分以外の生き残りのうちランダムな1人に、同じ色の砂として降りそそぐ。上の小さな容器が相手たちの様子。「おじゃま」は自分に降ってくる予定の砂の数。'],
+      [1, '【対戦】砂があふれる(または80粒こぼす)と脱落。最後まで残った人が1位。接続が切れた人も脱落になる。']
     ];
     $('rulesList').innerHTML = items.map(([c, t]) => '<li style="--c:' + PAL[c] + '">' + t + '</li>').join('');
   }
@@ -730,25 +748,21 @@ const Sfx = (() => {
     else if (a === 'vsRandom') startMatch('random');
     else if (a === 'vsKey') startMatch('kw');
     else if (a === 'cancelWait') cancelMatch();
+    else if (a === 'lobbyStart') hostStart();
   });
 
   // ============================================================
-  //  Versus mode (Firestore rooms + anonymous auth)
+  //  Versus mode (2-4 players, Firestore rooms + anonymous auth)
   // ============================================================
   const ATK_RATE = 0.5;
+  const MAX_PLAYERS = 4;
   const MW = W / 2, MH = H / 2;
   const vsBarEl = $('vsBar');
-  const miniCv = $('miniCv'), mctx = miniCv.getContext('2d');
-  const mimg = mctx.createImageData(MW, MH);
-  const mbuf = new Uint32Array(mimg.data.buffer);
-  let miniTh = 0;
   const vs = {
-    on: false, ended: false, finishing: false,
-    fs: null, db: null, uid: null, ref: null, myRef: null,
-    host: false, oppUid: null, oppName: '',
-    unsubs: [], mySent: [0, 0, 0, 0, 0], seen: [0, 0, 0, 0, 0], sentTotal: 0,
-    seq: 0, lastSendTick: 0, dirty: false, lastKey: '', lastRecv: 0,
-    oppTh: 0, oppGrid: new Uint8Array(MW * MH), oppBlob: null
+    on: false, ended: false,
+    fs: null, db: null, uid: null, rid: null, ref: null, myRef: null, hitsCol: null,
+    opps: [], unsubs: [], seenHits: new Set(),
+    seq: 0, lastSendTick: 0, dirty: false, lastKey: ''
   };
   let match = null, matchToken = 0;
 
@@ -757,6 +771,7 @@ const Sfx = (() => {
     vsBarEl.hidden = !on;
     $('lvLabel').textContent = on ? 'おじゃま' : 'レベル';
   }
+  const expireAt = () => vs.fs.Timestamp.fromMillis(Date.now() + 86400000);
 
   // ---- compact board snapshot: 2x2 downsample + run-length encoding ----
   function encodeGrid() {
@@ -781,58 +796,118 @@ const Sfx = (() => {
       for (let k = 0; k < n && p < dst.length; k++) dst[p++] = v;
     }
   }
-  function drawMini() {
-    const gr = vs.oppGrid;
-    for (let i = 0; i < gr.length; i++) { const c = gr[i]; mbuf[i] = (c >= 1 && c <= 5) ? pal[(c - 1) * SHADES + 3] : 0; }
-    const b = vs.oppBlob;
-    if (b && b.c >= 1 && b.c <= 5) {
+
+  // ---- opponent cards (small containers at the top) ----
+  function buildCards(others) {
+    vsBarEl.innerHTML = '';
+    vs.opps = others.map(pl => {
+      const card = document.createElement('div'); card.className = 'oppCard';
+      const wrap = document.createElement('div'); wrap.className = 'miniWrap';
+      const frameEl = document.createElement('div'); frameEl.className = 'miniFrame';
+      const cvs = document.createElement('canvas'); cvs.className = 'miniCv'; cvs.width = MW; cvs.height = MH;
+      frameEl.appendChild(cvs); wrap.appendChild(frameEl);
+      const mark = document.createElement('div'); mark.className = 'deadMark'; mark.textContent = '×'; wrap.appendChild(mark);
+      const info = document.createElement('div'); info.className = 'oppInfo';
+      const nm = document.createElement('span'); nm.textContent = pl.name;
+      const sc = document.createElement('b'); sc.textContent = '0';
+      info.append(nm, sc);
+      card.append(wrap, info);
+      vsBarEl.appendChild(card);
+      const c2 = cvs.getContext('2d'), im = c2.createImageData(MW, MH);
+      return {
+        uid: pl.uid, name: pl.name, grid: new Uint8Array(MW * MH), th: 0, miniTh: 0, blob: null,
+        score: 0, dead: false, gone: false, place: 0, lastRecv: performance.now(),
+        card, frameEl, ctx: c2, img: im, buf: new Uint32Array(im.data.buffer), scEl: sc
+      };
+    });
+    vs.opps.forEach(drawMini);
+  }
+  function drawMini(o) {
+    const gr = o.grid, mb = o.buf;
+    for (let i = 0; i < gr.length; i++) { const c = gr[i]; mb[i] = (c >= 1 && c <= 5) ? pal[(c - 1) * SHADES + 3] : 0; }
+    const b = o.blob;
+    if (b && b.c >= 1 && b.c <= 5 && !o.dead) {
       const bx = Math.round(b.x / 2), bw = Math.max(1, Math.round(b.w / 2)), bh = Math.max(1, Math.round(b.h / 2));
       const col = ((pal[(b.c - 1) * SHADES + 5] & 0x00FFFFFF) | 0x99000000) >>> 0;
-      for (let y = 0; y < bh && y < MH; y++) for (let x = bx; x < bx + bw && x < MW; x++) if (!gr[y * MW + x]) mbuf[y * MW + x] = col;
+      for (let y = 0; y < bh && y < MH; y++) for (let x = bx; x < bx + bw && x < MW; x++) if (!gr[y * MW + x]) mb[y * MW + x] = col;
     }
-    mctx.putImageData(mimg, 0, 0);
+    o.ctx.putImageData(o.img, 0, 0);
   }
-  function applyMini() {
-    const r = miniTh * Math.PI / 180, c = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r));
-    const fw = 66, fh = 75;
+  function applyMini(o) {
+    const r = o.miniTh * Math.PI / 180, c = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r));
+    const fw = 60, fh = 68;
     const bw = fw * c + fh * sn, bh = fw * sn + fh * c;
-    const k = Math.min(1, 92 / bw, 92 / bh);
-    $('miniFrame').style.transform = 'rotate(' + miniTh.toFixed(2) + 'deg) scale(' + k.toFixed(3) + ')';
+    const k = Math.min(1, 84 / bw, 76 / bh);
+    o.frameEl.style.transform = 'rotate(' + o.miniTh.toFixed(2) + 'deg) scale(' + k.toFixed(3) + ')';
+  }
+  function vsAnimate(dt) {
+    for (const o of vs.opps) {
+      o.miniTh += (o.th - o.miniTh) * Math.min(1, dt * 0.014);
+      applyMini(o);
+    }
+  }
+  function markDead(o) {
+    o.card.classList.add('dead');
+    drawMini(o);
   }
 
   // ---- state sync ----
-  function vsSend() {
-    if (!vs.on || vs.ended) return;
-    const data = {
+  function stateData(dead, place) {
+    return {
       g: encodeGrid(), th: Math.round(thetaT), dx: Math.round(dropX),
       dc: cur ? cur.c : 0, dw: cur ? cur.w : 0, dh: cur ? cur.h : 0,
-      sc: score, sp: spilled, atk: vs.mySent.slice()
+      sc: score, sp: spilled, dead, place, seq: ++vs.seq, expireAt: expireAt()
     };
-    const key = [data.g, data.th, data.dx, data.dc, data.sc, data.sp, data.atk.join()].join('|');
+  }
+  function vsSend() {
+    if (!vs.on || vs.ended) return;
+    const d = stateData(false, 0);
+    const key = [d.g, d.th, d.dx, d.dc, d.sc, d.sp].join('|');
     if (key === vs.lastKey && vsTicks - vs.lastSendTick < 180) return;
     vs.lastKey = key; vs.lastSendTick = vsTicks; vs.dirty = false;
-    data.seq = ++vs.seq;
-    data.expireAt = vs.fs.Timestamp.fromMillis(Date.now() + 86400000);
-    vs.fs.setDoc(vs.myRef, data).catch(e => console.warn('state send failed', e));
+    vs.fs.setDoc(vs.myRef, d).catch(e => console.warn('state send failed', e));
   }
-  function onOppState(d) {
-    vs.lastRecv = performance.now();
-    if (typeof d.g === 'string') decodeGrid(d.g, vs.oppGrid);
-    vs.oppTh = d.th || 0;
-    vs.oppBlob = { c: d.dc | 0, w: d.dw | 0, h: d.dh | 0, x: d.dx | 0 };
-    $('oppScore').textContent = d.sc || 0;
-    if (Array.isArray(d.atk)) {
-      let got = 0;
-      for (let k = 0; k < 5; k++) {
-        const n = d.atk[k] | 0;
-        if (n > vs.seen[k]) { const add = n - vs.seen[k]; vs.seen[k] = n; garbageQ[k] = Math.min(600, garbageQ[k] + add); got += add; }
-      }
-      if (got > 0) { Sfx.incoming(); updateHUD(); }
+  function onOppState(o, d) {
+    o.lastRecv = performance.now();
+    if (typeof d.g === 'string') decodeGrid(d.g, o.grid);
+    o.th = d.th || 0;
+    o.blob = { c: d.dc | 0, w: d.dw | 0, h: d.dh | 0, x: d.dx | 0 };
+    o.score = d.sc | 0;
+    o.scEl.textContent = o.score;
+    if (d.dead === true && !o.dead) { o.dead = true; o.place = d.place | 0; markDead(o); checkWin(); return; }
+    drawMini(o);
+  }
+  function onHit(id, d) {
+    if (vs.seenHits.has(id)) return;
+    vs.seenHits.add(id);
+    let got = 0;
+    if (Array.isArray(d.a)) for (let k = 0; k < 5; k++) {
+      const n = Math.max(0, d.a[k] | 0);
+      if (n > 0) { garbageQ[k] = Math.min(600, garbageQ[k] + n); got += n; }
     }
-    drawMini();
+    if (got > 0) { Sfx.incoming(); updateHUD(); }
   }
 
-  // garbage: sent sand pours in from the top as a stream
+  // attack: cleared sand goes to a random surviving opponent
+  function vsAttack(groups, combo) {
+    const alive = vs.opps.filter(o => !o.dead && !o.gone);
+    if (!alive.length) return;
+    const mult = 1 + 0.2 * Math.min(combo, 5);
+    const a = [0, 0, 0, 0, 0];
+    let sent = 0;
+    for (let q = 0; q < groups.length; q += 2) {
+      const amt = Math.floor(groups[q + 1] * ATK_RATE * mult);
+      a[groups[q] - 1] += amt; sent += amt;
+    }
+    if (sent <= 0) return;
+    const t = alive[Math.floor(Math.random() * alive.length)];
+    vs.fs.addDoc(vs.hitsCol, { from: vs.uid, to: t.uid, a, expireAt: expireAt() }).catch(e => console.warn('hit failed', e));
+    Sfx.send();
+    t.card.classList.remove('hit'); void t.card.offsetWidth; t.card.classList.add('hit');
+    setTimeout(() => t.card.classList.remove('hit'), 500);
+  }
+
+  // garbage: received sand pours in from the top as a stream
   function pourTick() {
     if (GY < 0) return;
     let k = 0;
@@ -853,10 +928,64 @@ const Sfx = (() => {
     pourTick();
     const since = vsTicks - vs.lastSendTick;
     if (since >= 60 || (vs.dirty && since >= 20)) vsSend();
-    if (vsTicks > 300 && vs.lastRecv && performance.now() - vs.lastRecv > 12000) vsFinish(vs.oppUid, 'disconnect');
+    if (vsTicks > 300 && vsTicks % 30 === 0) {
+      const now = performance.now();
+      for (const o of vs.opps) {
+        if (!o.dead && !o.gone && now - o.lastRecv > 12000) { o.gone = true; o.place = 0; markDead(o); }
+      }
+    }
+    checkWin();
   }
 
-  // ---- countdown / result ----
+  // ---- elimination / victory ----
+  const aliveCount = () => 1 + vs.opps.filter(o => !o.dead && !o.gone).length;
+  function checkWin() {
+    if (!vs.on || vs.ended || state !== 'play') return;
+    if (vs.opps.every(o => o.dead || o.gone)) vsWin();
+  }
+  function vsEliminate(reason) {
+    if (!vs.on || vs.ended) return;
+    const place = aliveCount();
+    vs.fs.setDoc(vs.myRef, stateData(true, place)).catch(() => {});
+    finishVersus(place, reason);
+  }
+  function vsWin() {
+    if (!vs.on || vs.ended) return;
+    vs.fs.updateDoc(vs.ref, { status: 'finished', winnerUid: vs.uid, reason: 'last' }).catch(() => {});
+    finishVersus(1, 'last');
+  }
+  function finishVersus(place, reason) {
+    vs.ended = true;
+    state = 'over';
+    dragOn = false;
+    vs.unsubs.forEach(u => { try { u(); } catch (e) {} });
+    vs.unsubs = [];
+    vs.on = false;
+
+    const ordinal = n => n + '位';
+    $('vsT').textContent = place === 1 ? 'かち!' : ordinal(place);
+    $('vsSub').textContent = place === 1 ? '最後まで生き残った!'
+      : (reason === 'spill' ? '砂がこぼれすぎました' : '砂があふれました');
+    const rows = [{ name: playerName + '(あなた)', place, score, me: true }];
+    vs.opps.forEach(o => rows.push({ name: o.name, place: o.dead ? o.place : (o.gone ? 0 : -1), score: o.score }));
+    rows.sort((x, y) => (x.place > 0 ? x.place : 99) - (y.place > 0 ? y.place : 99));
+    const ol = $('vsRes');
+    ol.innerHTML = '';
+    rows.forEach(r => {
+      const li = document.createElement('li');
+      if (r.me) li.className = 'me';
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = r.place > 0 ? r.place : '-';
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name + (r.place === 0 ? '(切断)' : (r.place < 0 ? '(プレイ中)' : ''));
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = r.score;
+      li.append(n, nm, sc);
+      ol.appendChild(li);
+    });
+    show('vVsOver');
+    if (place === 1) Sfx.win(); else Sfx.over();
+    try { navigator.vibrate && navigator.vibrate(place === 1 ? [40, 30, 40] : [80, 40, 80]); } catch (e) {}
+  }
+
+  // ---- countdown ----
   function countdown() {
     const steps = ['3', '2', '1', 'GO!'];
     let i = 0;
@@ -866,85 +995,51 @@ const Sfx = (() => {
       if (i === 3) Sfx.start(); else Sfx.warn();
       i++;
       if (i < steps.length) setTimeout(step, 800);
-      else setTimeout(() => { if (vs.on && state === 'count') { state = 'play'; vs.lastRecv = performance.now(); } }, 500);
+      else setTimeout(() => {
+        if (vs.on && state === 'count') {
+          state = 'play';
+          const now = performance.now();
+          vs.opps.forEach(o => { o.lastRecv = now; });
+        }
+      }, 500);
     };
     step();
-  }
-  function teardownVersus() {
-    vs.unsubs.forEach(u => { try { u(); } catch (e) {} });
-    vs.unsubs = [];
-    vs.on = false;
-  }
-  function endVersus(d) {
-    if (vs.ended) return;
-    vs.ended = true;
-    const win = d.winnerUid === vs.uid;
-    const reason = d.reason || '';
-    state = 'over';
-    dragOn = false;
-    teardownVersus();
-    let why;
-    if (reason === 'disconnect') why = win ? '相手の接続が切れました' : '接続が切れました';
-    else if (reason === 'spill') why = win ? '相手の砂がこぼれすぎました' : '砂がこぼれすぎました';
-    else why = win ? '相手の砂があふれました' : '砂があふれました';
-    $('vsT').textContent = win ? 'かち!' : 'まけ…';
-    $('vsSub').textContent = why + '\nあなた ' + score + ' / ' + vs.oppName + ' ' + $('oppScore').textContent;
-    show('vVsOver');
-    if (win) Sfx.win(); else Sfx.over();
-    try { navigator.vibrate && navigator.vibrate(win ? [40, 30, 40] : [80, 40, 80]); } catch (e) {}
-  }
-  async function vsFinish(loserUid, reason) {
-    if (!vs.on || vs.finishing || vs.ended) return;
-    vs.finishing = true;
-    state = 'wait';
-    let data;
-    try {
-      data = await vs.fs.runTransaction(vs.db, async tx => {
-        const snap = await tx.get(vs.ref);
-        const d = snap.data();
-        if (d.status === 'playing') {
-          const winner = loserUid === d.hostUid ? d.guestUid : d.hostUid;
-          tx.update(vs.ref, { status: 'finished', winnerUid: winner, reason });
-          return { winnerUid: winner, reason };
-        }
-        return d;
-      });
-    } catch (e) {
-      console.error(e);
-      data = { winnerUid: loserUid === vs.uid ? vs.oppUid : vs.uid, reason };
-    }
-    endVersus(data);
   }
 
   function launchVersus(info) {
     stopMatchSearch();
     const { fs, db, uid } = info.fb;
     Object.assign(vs, {
-      on: true, ended: false, finishing: false, fs, db, uid,
+      on: true, ended: false, fs, db, uid, rid: info.rid,
       ref: fs.doc(db, 'rooms', info.rid),
       myRef: fs.doc(db, 'rooms', info.rid, 'states', uid),
-      host: info.host, oppUid: info.oppUid, oppName: info.oppName,
-      sentTotal: 0, seq: 0, lastSendTick: 0, dirty: false, lastKey: '',
-      oppTh: 0, oppBlob: null, lastRecv: performance.now()
+      hitsCol: fs.collection(db, 'rooms', info.rid, 'hits'),
+      seq: 0, lastSendTick: 0, dirty: false, lastKey: ''
     });
-    vs.mySent.fill(0); vs.seen.fill(0); vs.oppGrid.fill(0);
-    miniTh = 0;
-    $('oppName').textContent = info.oppName;
-    $('oppScore').textContent = '0';
-    $('sentCnt').textContent = '0';
-    drawMini();
+    vs.seenHits.clear();
+    vs.unsubs = [];
+    const others = info.uids.map((u, i) => ({ uid: u, name: info.names[i] || 'ゲスト' })).filter(x => x.uid !== uid);
+    buildCards(others);
     vs.unsubs.push(fs.onSnapshot(vs.ref, snap => {
       const d = snap.data();
-      if (d && d.status === 'finished' && !vs.ended) endVersus(d);
+      if (d && d.status === 'finished' && d.winnerUid !== uid && !vs.ended) finishVersus(2, 'gone');
     }));
-    vs.unsubs.push(fs.onSnapshot(fs.doc(db, 'rooms', info.rid, 'states', info.oppUid), snap => {
-      const d = snap.data();
-      if (d) onOppState(d);
+    vs.unsubs.push(fs.onSnapshot(fs.collection(db, 'rooms', info.rid, 'states'), snap => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed' || ch.doc.id === uid) return;
+        const o = vs.opps.find(x => x.uid === ch.doc.id);
+        if (o) onOppState(o, ch.doc.data());
+      });
+    }));
+    vs.unsubs.push(fs.onSnapshot(fs.query(vs.hitsCol, fs.where('to', '==', uid)), snap => {
+      snap.docChanges().forEach(ch => { if (ch.type === 'added') onHit(ch.doc.id, ch.doc.data()); });
     }));
     startGame({ seed: info.seed });
   }
 
-  // ---- matchmaking ----
+  // ============================================================
+  //  Matchmaking / lobby
+  // ============================================================
   const kwKey = s => 'k:' + [...String(s).normalize('NFKC').trim().toLowerCase()].slice(0, 12).join('');
   const isFresh = d => {
     const hb = d.hostBeat && d.hostBeat.toMillis ? d.hostBeat.toMillis() : 0;
@@ -952,17 +1047,31 @@ const Sfx = (() => {
   };
   async function tryJoin(fb, ref) {
     const { fs, db, uid } = fb;
-    const seed = 1 + Math.floor(Math.random() * 2147483646);
     try {
       return await fs.runTransaction(db, async tx => {
         const snap = await tx.get(ref);
         if (!snap.exists()) throw new Error('gone');
         const d = snap.data();
-        if (d.status !== 'waiting' || d.hostUid === uid) throw new Error('taken');
-        tx.update(ref, { status: 'playing', guestUid: uid, guestName: playerName, seed });
-        return { hostUid: d.hostUid, hostName: d.hostName || 'あいて', seed };
+        if (d.status !== 'waiting' || d.uids.includes(uid) || d.uids.length >= MAX_PLAYERS) throw new Error('unavailable');
+        tx.update(ref, { uids: [...d.uids, uid], names: [...d.names, playerName] });
+        return true;
       });
-    } catch (e) { return null; }
+    } catch (e) { return false; }
+  }
+  async function leaveLobby(fb, ref) {
+    const { fs, db, uid } = fb;
+    try {
+      await fs.runTransaction(db, async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return;
+        const d = snap.data();
+        if (d.status !== 'waiting' || !d.uids.includes(uid)) return;
+        tx.update(ref, {
+          uids: d.uids.filter(u => u !== uid),
+          names: d.names.filter((n, i) => d.uids[i] !== uid)
+        });
+      });
+    } catch (e) { /* ignore */ }
   }
   function stopMatchSearch() {
     matchToken++;
@@ -975,9 +1084,133 @@ const Sfx = (() => {
   async function cancelMatch() {
     const m = match;
     stopMatchSearch();
-    if (m && m.ref && m.fb) { try { await m.fb.fs.updateDoc(m.ref, { status: 'cancelled' }); } catch (e) {} }
+    if (m && m.ref && m.fb) {
+      if (m.isHost) { try { await m.fb.fs.updateDoc(m.ref, { status: 'cancelled' }); } catch (e) {} }
+      else await leaveLobby(m.fb, m.ref);
+    }
     show('vVs');
   }
+  async function hostStart() {
+    const m = match;
+    if (!m || !m.isHost || m.started || !m.n || m.n < 2) return;
+    m.started = true;
+    try {
+      await m.fb.fs.updateDoc(m.ref, { status: 'playing', seed: 1 + Math.floor(Math.random() * 2147483646) });
+    } catch (e) { console.error(e); m.started = false; }
+  }
+
+  const LOBBY_COLORS = ['#ef5b5b', '#f7b733', '#1fb5a5', '#4a6cf7'];
+  function renderLobby(m, d) {
+    const n = d.uids.length;
+    m.n = n;
+    const ul = $('lobbyList');
+    ul.innerHTML = '';
+    for (let k = 0; k < MAX_PLAYERS; k++) {
+      const li = document.createElement('li');
+      if (k < n) {
+        if (d.uids[k] === m.fb.uid) li.className = 'me';
+        const dot = document.createElement('i'); dot.style.background = LOBBY_COLORS[k];
+        const nm = document.createElement('span'); nm.textContent = d.names[k] || 'ゲスト';
+        li.append(dot, nm);
+        if (k === 0) { const em = document.createElement('em'); em.textContent = 'ホスト'; li.appendChild(em); }
+      } else {
+        li.className = 'empty';
+        li.textContent = 'あと1人まてます';
+      }
+      ul.appendChild(li);
+    }
+    $('lobbyStart').hidden = !(m.isHost && n >= 2);
+    let msg;
+    if (n < 2) msg = m.kind === 'kw' ? '同じ合言葉を入れた人を待っています…\n(友だちにも同じ合言葉を伝えてね)' : '対戦相手を待っています…';
+    else if (n >= MAX_PLAYERS) msg = '4人そろいました!まもなく開始…';
+    else if (m.kind === 'kw') msg = m.isHost ? '「いますぐはじめる」で開始できます(最大4人)' : 'ホストが開始するのを待っています…';
+    else msg = m.isHost ? '2人以上そろって10秒たつか、4人そろうと開始します…' : 'メンバーがそろうのを待っています(最大4人)…';
+    $('waitMsg').textContent = msg;
+  }
+
+  function enterLobby(m, ref, isHost, token) {
+    const { fs } = m.fb;
+    m.ref = ref; m.isHost = isHost; m.started = false; m.n = 0; m.t2 = 0; m.lastSnap = Date.now();
+    m.unsub = fs.onSnapshot(ref, snap => {
+      if (matchToken !== token) return;
+      const d = snap.data();
+      if (!d) return;
+      m.lastSnap = Date.now();
+      if (d.status === 'playing') {
+        launchVersus({ fb: m.fb, rid: ref.id, seed: d.seed, uids: d.uids, names: d.names });
+        return;
+      }
+      if (d.status === 'cancelled') {
+        // host left: look for another room
+        const kind = m.kind;
+        stopMatchSearch();
+        startMatch(kind);
+        return;
+      }
+      if (d.status === 'waiting') {
+        if (isHost && d.uids.length >= 2 && !m.t2) m.t2 = Date.now();
+        if (isHost && d.uids.length < 2) m.t2 = 0;
+        renderLobby(m, d);
+      }
+    });
+    if (isHost) {
+      m.timers.push(setInterval(() => {
+        fs.updateDoc(ref, { hostBeat: fs.serverTimestamp() }).catch(() => {});
+      }, 5000));
+      m.timers.push(setInterval(() => {
+        if (matchToken !== token || m.started) return;
+        if (m.n >= MAX_PLAYERS) hostStart();
+        else if (m.kind === 'random' && m.n >= 2 && m.t2 && Date.now() - m.t2 >= 10000) hostStart();
+      }, 500));
+      // two players may open rooms at the same time: a lone host joins the room with the smallest id
+      let busy = false;
+      m.timers.push(setInterval(async () => {
+        if (busy || matchToken !== token || m.n !== 1 || m.started) return;
+        busy = true;
+        try {
+          const f = await seekRoom(m.fb, m.key, ref.id);
+          if (f && matchToken === token && m.n === 1) {
+            const mm = m;
+            mm.timers.forEach(t => clearInterval(t)); mm.timers = [];
+            if (mm.unsub) { mm.unsub(); mm.unsub = null; }
+            fs.updateDoc(ref, { status: 'cancelled' }).catch(() => {});
+            enterLobby(mm, f.ref, false, token);
+          }
+        } catch (e) { /* retry next time */ }
+        busy = false;
+      }, 2000));
+    } else {
+      // guest: if the host disappears, go back to searching
+      m.timers.push(setInterval(() => {
+        if (matchToken !== token) return;
+        if (Date.now() - m.lastSnap > 22000) {
+          const kind = m.kind;
+          leaveLobby(m.fb, ref);
+          stopMatchSearch();
+          startMatch(kind);
+        }
+      }, 3000));
+    }
+  }
+
+  // find a joinable waiting room (joins it and returns { ref } ), optionally only rooms with id < maxId
+  async function seekRoom(fb, key, maxId) {
+    const { fs, db, uid } = fb;
+    const snaps = await fs.getDocs(fs.query(fs.collection(db, 'rooms'),
+      fs.where('status', '==', 'waiting'), fs.where('key', '==', key), fs.limit(10)));
+    const cands = snaps.docs.filter(d => {
+      const x = d.data();
+      return Array.isArray(x.uids) && !x.uids.includes(uid) && x.uids.length < MAX_PLAYERS && isFresh(x) && (!maxId || d.id < maxId);
+    });
+    cands.sort((a, b) => maxId
+      ? (a.id < b.id ? -1 : 1)
+      : (b.data().uids.length - a.data().uids.length) || (a.id < b.id ? -1 : 1));
+    for (const d of cands) {
+      if (await tryJoin(fb, d.ref)) return { ref: d.ref };
+    }
+    return null;
+  }
+
   async function startMatch(kind) {
     let key = 'random', label = 'ランダムマッチ';
     if (kind === 'kw') {
@@ -988,75 +1221,31 @@ const Sfx = (() => {
     }
     stopMatchSearch();
     const token = matchToken;
-    const m = match = { timers: [], unsub: null, ref: null, fb: null };
+    const m = match = { kind, key, timers: [], unsub: null, ref: null, fb: null, isHost: false, started: false, n: 0, t2: 0, lastSnap: 0 };
     show('vWait');
     $('waitT').textContent = label;
     $('waitMsg').textContent = 'つなげています…';
+    $('lobbyList').innerHTML = '';
+    $('lobbyStart').hidden = true;
     try {
       const fb = await ensureFb();
       if (matchToken !== token) return;
       m.fb = fb;
       const { fs, db, uid } = fb;
-      const col = fs.collection(db, 'rooms');
-      let busy = false;
-      const seek = async maxId => {
-        const snaps = await fs.getDocs(fs.query(col, fs.where('status', '==', 'waiting'), fs.where('key', '==', key), fs.limit(10)));
-        const cands = snaps.docs.filter(d => {
-          const x = d.data();
-          return x.hostUid !== uid && isFresh(x) && (!maxId || d.id < maxId);
-        });
-        for (const d of cands) {
-          if (matchToken !== token) return null;
-          const r = await tryJoin(fb, d.ref);
-          if (r) return { id: d.id, r };
-        }
-        return null;
-      };
-      $('waitMsg').textContent = '相手をさがしています…';
-      const found = await seek(null);
-      if (matchToken !== token) return;
-      if (found) {
-        launchVersus({ fb, rid: found.id, host: false, oppUid: found.r.hostUid, oppName: found.r.hostName, seed: found.r.seed });
-        return;
-      }
-      // nobody waiting: open my own room and wait
-      const ref = fs.doc(col);
+      $('waitMsg').textContent = '部屋をさがしています…';
+      const found = await seekRoom(fb, key, null);
+      if (matchToken !== token) { if (found) leaveLobby(fb, found.ref); return; }
+      if (found) { enterLobby(m, found.ref, false, token); return; }
+      const ref = fs.doc(fs.collection(db, 'rooms'));
       await fs.setDoc(ref, {
         mode: kind, key, status: 'waiting',
-        hostUid: uid, hostName: playerName, guestUid: null, guestName: null,
+        hostUid: uid, uids: [uid], names: [playerName],
         seed: 0, createdAt: fs.serverTimestamp(), hostBeat: fs.serverTimestamp(),
         winnerUid: null, reason: null,
         expireAt: fs.Timestamp.fromMillis(Date.now() + 86400000)
       });
       if (matchToken !== token) { fs.updateDoc(ref, { status: 'cancelled' }).catch(() => {}); return; }
-      m.ref = ref;
-      $('waitMsg').textContent = kind === 'kw'
-        ? '相手が同じ合言葉を入れるのを待っています…\n(友だちにも同じ合言葉を伝えてね)'
-        : '対戦相手を待っています…';
-      $('waitMsg').style.whiteSpace = 'pre-line';
-      m.unsub = fs.onSnapshot(ref, snap => {
-        const d = snap.data();
-        if (!d || matchToken !== token) return;
-        if (d.status === 'playing' && d.guestUid) {
-          launchVersus({ fb, rid: ref.id, host: true, oppUid: d.guestUid, oppName: d.guestName || 'ゲスト', seed: d.seed });
-        }
-      });
-      m.timers.push(setInterval(() => {
-        fs.updateDoc(ref, { hostBeat: fs.serverTimestamp() }).catch(() => {});
-      }, 5000));
-      // two players may open rooms at the same time: the one with the larger room id joins the smaller one
-      m.timers.push(setInterval(async () => {
-        if (busy || matchToken !== token) return;
-        busy = true;
-        try {
-          const f = await seek(ref.id);
-          if (f && matchToken === token) {
-            fs.updateDoc(ref, { status: 'cancelled' }).catch(() => {});
-            launchVersus({ fb, rid: f.id, host: false, oppUid: f.r.hostUid, oppName: f.r.hostName, seed: f.r.seed });
-          }
-        } catch (e) { /* retry next time */ }
-        busy = false;
-      }, 2000));
+      enterLobby(m, ref, true, token);
     } catch (e) {
       console.error(e);
       if (matchToken === token) $('waitMsg').textContent = 'つながりません。通信と Firebase の設定(匿名認証・Firestore・ルール)を確認してください。';
@@ -1249,16 +1438,7 @@ const Sfx = (() => {
       combo = (frameNo - lastClearF <= 240) ? combo + 1 : 0;
       lastClearF = frameNo;
       Sfx.clear(cleared, combo);
-      if (versus && vs.on) {
-        const mult = 1 + 0.2 * Math.min(combo, 5);
-        let sent = 0;
-        for (let q = 0; q < groupsC.length; q += 2) {
-          const amt = Math.floor(groupsC[q + 1] * ATK_RATE * mult);
-          vs.mySent[groupsC[q] - 1] += amt;
-          sent += amt;
-        }
-        if (sent > 0) { vs.dirty = true; vs.sentTotal += sent; $('sentCnt').textContent = vs.sentTotal; Sfx.send(); }
-      }
+      if (versus && vs.on) vsAttack(groupsC, combo);
       showPop('+' + cleared);
       try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
       const nl = 1 + Math.floor(score / 800);
@@ -1312,7 +1492,7 @@ const Sfx = (() => {
   }
 
   function gameOver(spillOut) {
-    if (versus) { vsFinish(vs.uid, spillOut ? 'spill' : 'full'); return; }
+    if (versus) { vsEliminate(spillOut ? 'spill' : 'full'); return; }
     state = 'over';
     dragging = false; dragOn = false;
     Sfx.over();
@@ -1469,10 +1649,7 @@ const Sfx = (() => {
       theta = Math.abs(d) < 0.05 ? thetaT : theta + d * Math.min(1, dt * 0.014);
     }
     applyTransform();
-    if (!vsBarEl.hidden) {
-      miniTh += (vs.oppTh - miniTh) * Math.min(1, dt * 0.014);
-      applyMini();
-    }
+    if (!vsBarEl.hidden) vsAnimate(dt);
     if (t - themeT > 500) { readTheme(); themeT = t; }
     render(t);
   }
