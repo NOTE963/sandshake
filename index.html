@@ -54,6 +54,22 @@ body {
 .next { display: flex; flex-direction: column; gap: 4px; margin-left: auto; }
 .next span { line-height: 1.1; }
 .next i { display: block; width: 26px; height: 22px; border-radius: 7px; background: #999; }
+#muteBtn {
+  flex: none;
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid var(--frame);
+  border-radius: 12px;
+  padding: 0;
+}
+#muteBtn:active { background: var(--frame); color: var(--bg); }
+#muteBtn:focus-visible { outline: 3px solid #4a6cf7; outline-offset: 2px; }
+#muteBtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#muteBtn:not(.off) .xmark { display: none; }
+#muteBtn.off .waves { display: none; }
+#muteBtn.off { opacity: .6; }
 #stage {
   flex: 1;
   min-height: 0;
@@ -206,6 +222,9 @@ body {
   <div class="stat"><span>レベル</span><b id="lv">1</b></div>
   <div class="stat"><span>こぼれ</span><b id="spill" class="sm">0/80</b></div>
   <div class="next"><span>つぎ</span><i id="chip"></i></div>
+  <button id="muteBtn" type="button" aria-label="効果音のオン/オフ" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><g class="waves"><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></g><g class="xmark"><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></g></svg>
+  </button>
 </header>
 <main id="stage">
   <div id="frame"><canvas id="cv"></canvas></div>
@@ -215,7 +234,7 @@ body {
     <!-- HOME -->
     <section class="card" id="vHome">
       <svg id="title" role="img" aria-label="SAND SHAKE"></svg>
-      <p class="tag">枠を傾けて、同じ色の砂をそろえて消そう</p>
+      <p class="tag">砂を落として、枠を傾けて、同じ色をそろえて消そう</p>
       <p class="bestline" id="homeBest"></p>
       <div class="btns">
         <button class="btn primary" type="button" data-act="start">はじめる</button>
@@ -281,6 +300,122 @@ const firebaseConfig = {
 const FB_VER = '10.12.2';
 const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
 
+// ============================================================
+//  Sound effects (Web Audio, synthesized: no audio files)
+// ============================================================
+const Sfx = (() => {
+  let ac = null, master = null, noiseBuf = null, muted = false;
+  try { muted = localStorage.getItem('sandshake-mute') === '1'; } catch (e) {}
+  const last = {};
+  const throttle = (k, ms) => { const n = performance.now(); if (last[k] && n - last[k] < ms) return false; last[k] = n; return true; };
+
+  function init() {
+    try {
+      if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ac = new AC();
+      master = ac.createGain();
+      master.gain.value = muted ? 0 : 0.8;
+      const comp = ac.createDynamicsCompressor();
+      master.connect(comp); comp.connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate * 1.5, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { ac = null; }
+  }
+  const ok = () => ac && !muted && ac.state !== 'closed';
+
+  function env(g, t0, att, dur, vol) {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + att);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  }
+  function tone(f, dur, o = {}) {
+    if (!ok()) return;
+    const t0 = ac.currentTime + (o.delay || 0);
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(f, t0);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t0 + dur);
+    env(g, t0, o.att || 0.006, dur, o.vol == null ? 0.2 : o.vol);
+    osc.connect(g); g.connect(master);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+  function noise(dur, o = {}) {
+    if (!ok()) return;
+    const t0 = ac.currentTime + (o.delay || 0);
+    const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = noiseBuf;
+    f.type = o.type || 'bandpass';
+    f.Q.value = o.q || 1;
+    f.frequency.setValueAtTime(o.f0 || 1000, t0);
+    if (o.f1) f.frequency.exponentialRampToValueAtTime(o.f1, t0 + dur);
+    env(g, t0, o.att || 0.01, dur, o.vol == null ? 0.1 : o.vol);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t0, Math.random() * 0.3); src.stop(t0 + dur + 0.05);
+  }
+
+  const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26];
+  const hz = (base, semis) => base * Math.pow(2, semis / 12);
+
+  return {
+    init,
+    get muted() { return muted; },
+    setMuted(m) {
+      muted = m;
+      try { localStorage.setItem('sandshake-mute', m ? '1' : '0'); } catch (e) {}
+      if (master) master.gain.value = m ? 0 : 0.8;
+    },
+    click() { tone(660, 0.05, { type: 'triangle', to: 880, vol: 0.1 }); },
+    start() { tone(523, 0.1, { type: 'triangle', vol: 0.14 }); tone(784, 0.16, { type: 'triangle', vol: 0.14, delay: 0.08 }); tone(1047, 0.22, { type: 'sine', vol: 0.1, delay: 0.16 }); },
+    move() { if (throttle('move', 45)) tone(1400, 0.03, { type: 'sine', vol: 0.035 }); },
+    drop() {
+      tone(720, 0.16, { type: 'sine', to: 160, vol: 0.2 });
+      noise(0.2, { f0: 2200, f1: 500, q: 0.8, vol: 0.09 });
+    },
+    land(size) {
+      const k = Math.min(1, 0.45 + size / 90);
+      noise(0.22, { type: 'lowpass', f0: 900, f1: 220, q: 0.7, vol: 0.2 * k, att: 0.004 });
+      tone(120, 0.18, { type: 'sine', to: 52, vol: 0.26 * k, att: 0.004 });
+      noise(0.12, { type: 'highpass', f0: 3500, vol: 0.04 * k, delay: 0.02 });
+    },
+    tilt() {
+      noise(0.5, { f0: 700, f1: 2600, q: 0.6, vol: 0.11, att: 0.06 });
+      tone(300, 0.08, { type: 'triangle', to: 200, vol: 0.08 });
+    },
+    clear(n, combo) {
+      const shift = Math.min(combo, 6) * 1; // semitones up per combo
+      const base = hz(523.25, shift);
+      const count = Math.min(10, 4 + Math.floor(n / 45));
+      noise(0.45, { f0: 500, f1: 5000, q: 0.7, vol: 0.13, att: 0.03 });
+      for (let i = 0; i < count; i++) {
+        const f = hz(base, SCALE[i]);
+        const d = i * 0.055;
+        tone(f, 0.28, { type: 'triangle', vol: 0.15, delay: d });
+        tone(f * 2, 0.2, { type: 'sine', vol: 0.06, delay: d + 0.01 });
+      }
+      const end = count * 0.055;
+      tone(hz(base, SCALE[count - 1]) * 2, 0.6, { type: 'sine', vol: 0.09, delay: end });
+      tone(hz(base, SCALE[count - 1]) * 3, 0.45, { type: 'sine', vol: 0.05, delay: end + 0.03 });
+      if (n >= 180) tone(90, 0.3, { type: 'sine', to: 45, vol: 0.28 });
+    },
+    level() {
+      [0, 4, 7, 12, 16].forEach((s, i) => tone(hz(523.25, s), 0.3, { type: 'triangle', vol: 0.16, delay: i * 0.09 }));
+      tone(hz(523.25, 24), 0.7, { type: 'sine', vol: 0.1, delay: 0.5 });
+      tone(hz(523.25, 19), 0.7, { type: 'sine', vol: 0.08, delay: 0.5 });
+    },
+    spill() { if (throttle('spill', 110)) noise(0.09, { type: 'highpass', f0: 3200, vol: 0.05 }); },
+    warn() { tone(880, 0.09, { type: 'square', vol: 0.05 }); },
+    over() {
+      [392, 349, 294, 220].forEach((f, i) => tone(f, 0.34, { type: 'triangle', vol: 0.17, delay: i * 0.17 }));
+      tone(110, 1.0, { type: 'sine', to: 70, vol: 0.2, delay: 0.7 });
+      noise(0.8, { type: 'lowpass', f0: 1500, f1: 200, vol: 0.12, delay: 0.5, att: 0.1 });
+    }
+  };
+})();
+['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, () => Sfx.init(), true));
+
 (() => {
   const W = 60, H = 72, N = W * H, WARN_ROW = 8, SPILL_MAX = 80;
   const PAL = ['#ef5b5b', '#f7b733', '#1fb5a5', '#4a6cf7', '#b45cd6'];
@@ -316,11 +451,13 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
   let CELL = 6, DPR = 1, FW = 300, FH = 360, AW = 300, AH = 400;
   let state = 'ready';
   let score = 0, level = 1, best = 0, spilled = 0;
-  let spawnT = 0, blocked = 0, frameNo = 0, lastColor = 0;
-  let nextBlob = null, flip = false;
+  let blocked = 0, frameNo = 0, lastColor = 0;
+  let cur = null, nextBlob = null, flip = false;
+  let dropX = 0, cool = 0, holdT = 0, dragOn = false, fc0 = 0, dx0 = 0, K = 1;
+  let landT = 0, landSize = 0, combo = 0, lastClearF = -9999, lastTickX = -1;
   let theta = 0, thetaT = 0, dragging = false, dragX0 = 0, dragTh0 = 0;
   let GX = 0, GY = 1;
-  let dangerColor = '#e5484d';
+  let dangerColor = '#e5484d', inkColor = '#1c2233';
   let playerName = '';
 
   // ---------- local storage (best score / nickname) ----------
@@ -443,14 +580,15 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
 
   function buildRules() {
     const items = [
-      [0, '上から色つきの砂のかたまりが、枠の中へ入ってくる。'],
-      [1, '枠を横になぞるか、下のボタンで枠を傾ける(ボタン1回で45°)。砂は低くなった側へ流れる。'],
-      [2, '同じ色の砂が、枠の左右の壁、または上下の壁までつながると消える。ななめのつながりも有効。'],
-      [3, '消えた砂の数がそのままスコアになる。'],
-      [4, '800点ごとにレベルアップ。色が増えて(最大5色)、砂が降るペースも速くなる。'],
-      [0, '枠の上は開いている。90°を超えて傾けると砂がこぼれる。こぼれた砂が80粒になると終わり。'],
-      [1, '砂が積もって上から砂が入れなくなったら終わり。赤い点線が積もりすぎの目安。'],
-      [2, 'スコアは匿名でランキングに載る(登録はいちばん高いスコアだけ)。名前はランキング画面で変えられる。']
+      [0, '上で待っている砂のかたまりを、画面をなぞって左右に動かす。指をはなすと、その場所から落ちる。'],
+      [1, '放っておくと一定時間で自動的に落ちる。上に出るバーが残り時間で、レベルが上がるほど短くなる。'],
+      [2, '下のボタンで枠を傾ける(1回で45°)。砂は低くなった側へ流れる。'],
+      [3, '同じ色の砂が、枠の左右の壁、または上下の壁までつながると消える。ななめのつながりも有効。'],
+      [4, '消えた砂の数がそのままスコア。800点ごとにレベルアップして、色が増える(最大5色)。'],
+      [0, '枠の上は開いている。90°を超えて傾けると砂がこぼれる(その間は砂を落とせない)。こぼれた砂が80粒になると終わり。'],
+      [1, '砂が積もって、かたまりを落とせる場所がなくなったら終わり。赤い点線が積もりすぎの目安。'],
+      [2, 'スコアは匿名でランキングに載る(登録は最高スコアのみ)。名前はランキング画面で変えられる。'],
+      [3, '効果音は右上のスピーカーボタンでオン/オフできる。']
     ];
     $('rulesList').innerHTML = items.map(([c, t]) => '<li style="--c:' + PAL[c] + '">' + t + '</li>').join('');
   }
@@ -497,8 +635,9 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
-    if (a === 'start') startGame();
-    else if (a === 'home') show('vHome');
+    if (a === 'start') { Sfx.start(); startGame(); return; }
+    Sfx.click();
+    if (a === 'home') show('vHome');
     else if (a === 'rules') show('vRules');
     else if (a === 'rank') openRank();
   });
@@ -507,7 +646,7 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
   //  Game
   // ============================================================
   const numColors = () => Math.min(5, 1 + level);
-  const interval = () => Math.max(40, 90 - (level - 1) * 8);
+  const holdLimit = () => Math.max(240, 720 - (level - 1) * 90); // ticks (60/sec)
 
   function swap(i, j) {
     let t = g[i]; g[i] = g[j]; g[j] = t;
@@ -520,25 +659,63 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     lastColor = c;
     const w = 8 + Math.floor(Math.random() * 7);
     const h = 4 + Math.floor(Math.random() * 3);
-    const x = Math.floor(Math.random() * (W - w + 1));
-    return { c, w, h, x };
+    return { c, w, h };
   }
-  function spawn() {
-    const b = nextBlob;
-    for (let y = 0; y < b.h; y++)
-      for (let x = b.x; x < b.x + b.w; x++)
+  function areaFree(x0) {
+    if (x0 < 0 || x0 + cur.w > W) return false;
+    for (let y = 0; y < cur.h; y++)
+      for (let x = x0; x < x0 + cur.w; x++)
         if (g[y * W + x]) return false;
+    return true;
+  }
+  function findX(x) {
+    const r = Math.round(x);
+    for (let d = 0; d <= 4; d++) {
+      if (areaFree(r + d)) return r + d;
+      if (d && areaFree(r - d)) return r - d;
+    }
+    return -1;
+  }
+  function anyFree() {
+    for (let x0 = 0; x0 + cur.w <= W; x0++) if (areaFree(x0)) return true;
+    return false;
+  }
+  function tryDrop(auto) {
+    if (state !== 'play' || cool > 0 || GY < 0 || !cur) return;
+    const x0 = findX(dropX);
+    if (x0 < 0) {
+      if (!auto) { try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} }
+      return;
+    }
+    const b = cur;
     for (let y = 0; y < b.h; y++) {
       for (let x = 0; x < b.w; x++) {
         if ((y === 0 || y === b.h - 1) && (x === 0 || x === b.w - 1)) continue;
-        const i = y * W + b.x + x;
+        const i = y * W + x0 + x;
         g[i] = b.c;
         sh[i] = Math.floor(Math.random() * SHADES);
       }
     }
+    // estimate when the sand reaches the pile, for the landing sound
+    let dist = 24;
+    if (GY === 1 && GX === 0) {
+      let top = H;
+      for (let x = x0; x < x0 + b.w; x++) {
+        let y = b.h;
+        while (y < H && !g[y * W + x]) y++;
+        if (y < top) top = y;
+      }
+      dist = Math.max(0, top - b.h);
+    }
+    landT = Math.max(3, Math.round(dist / 2));
+    landSize = b.w * b.h;
+    Sfx.drop();
+    cur = nextBlob;
     nextBlob = makeBlob();
     updateChip();
-    return true;
+    dropX = Math.max(0, Math.min(W - cur.w, x0 + b.w / 2 - cur.w / 2));
+    cool = 22;
+    holdT = 0;
   }
 
   // sand simulation with 8-direction gravity (frame coordinates)
@@ -633,30 +810,44 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     }
     if (cleared > 0) {
       score += cleared;
+      combo = (frameNo - lastClearF <= 240) ? combo + 1 : 0;
+      lastClearF = frameNo;
+      Sfx.clear(cleared, combo);
       showPop('+' + cleared);
       try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
       const nl = 1 + Math.floor(score / 800);
-      if (nl > level) { level = nl; setTimeout(() => showPop('LEVEL ' + level), 700); }
+      if (nl > level) { level = nl; setTimeout(() => showPop('LEVEL ' + level), 700); setTimeout(() => Sfx.level(), 550); }
       updateHUD();
     }
   }
 
-  // tilting the frame
+  // moving the dropper: drag sideways (along the frame's top edge), release to drop
+  function fingerCellX(e) {
+    const r = stage.getBoundingClientRect();
+    const vx = e.clientX - (r.left + r.width / 2), vy = e.clientY - (r.top + r.height / 2);
+    const rad = theta * Math.PI / 180;
+    const u = (vx * Math.cos(rad) + vy * Math.sin(rad)) / K;
+    return (u + FW / 2 - 5) / (CELL / DPR);
+  }
   stage.addEventListener('pointerdown', e => {
     if (state !== 'play') return;
-    dragging = true; dragX0 = e.clientX; dragTh0 = theta;
+    dragOn = true; fc0 = fingerCellX(e); dx0 = dropX;
     try { stage.setPointerCapture(e.pointerId); } catch (err) {}
   });
   stage.addEventListener('pointermove', e => {
-    if (!dragging || state !== 'play') return;
-    theta = dragTh0 + (e.clientX - dragX0) * 0.55;
-    thetaT = Math.round(theta / 45) * 45;
+    if (!dragOn || state !== 'play' || !cur) return;
+    dropX = Math.max(0, Math.min(W - cur.w, dx0 + fingerCellX(e) - fc0));
+    const rx = Math.round(dropX);
+    if (rx !== lastTickX) { lastTickX = rx; Sfx.move(); }
   });
-  const endDrag = () => { dragging = false; };
-  stage.addEventListener('pointerup', endDrag);
-  stage.addEventListener('pointercancel', endDrag);
-  $('bL').addEventListener('click', () => { if (state === 'play') thetaT -= 45; });
-  $('bR').addEventListener('click', () => { if (state === 'play') thetaT += 45; });
+  stage.addEventListener('pointerup', () => {
+    if (!dragOn) return;
+    dragOn = false;
+    tryDrop(false);
+  });
+  stage.addEventListener('pointercancel', () => { dragOn = false; });
+  $('bL').addEventListener('click', () => { if (state === 'play') { thetaT -= 45; Sfx.tilt(); } });
+  $('bR').addEventListener('click', () => { if (state === 'play') { thetaT += 45; Sfx.tilt(); } });
 
   function updateHUD() {
     $('score').textContent = score;
@@ -676,7 +867,8 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
 
   function gameOver(spillOut) {
     state = 'over';
-    dragging = false;
+    dragging = false; dragOn = false;
+    Sfx.over();
     const finalScore = score, finalLevel = level;
     const isBest = finalScore > best;
     if (isBest) { best = finalScore; try { localStorage.setItem('sandshake-best', String(best)); } catch (e) {} }
@@ -699,10 +891,12 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
   }
   function startGame() {
     g.fill(0); sh.fill(0); fl.fill(0);
-    score = 0; level = 1; spilled = 0; spawnT = 0; blocked = 0; frameNo = 0; lastColor = 0;
-    theta = thetaT = 0; dragging = false;
+    score = 0; level = 1; spilled = 0; blocked = 0; frameNo = 0; lastColor = 0; cool = 0; holdT = 0;
+    landT = 0; combo = 0; lastClearF = -9999;
+    theta = thetaT = 0; dragging = false; dragOn = false;
     setGravity();
-    nextBlob = makeBlob();
+    cur = makeBlob(); nextBlob = makeBlob();
+    dropX = (W - cur.w) / 2;
     updateChip(); updateHUD();
     $('ov').hidden = true;
     state = 'play';
@@ -712,12 +906,17 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     if (state !== 'play') return;
     setGravity();
     if (GY >= 0) {
-      spawnT++;
-      if (spawnT >= interval()) {
-        if (spawn()) { spawnT = 0; blocked = 0; }
-        else if (++blocked > 90) { gameOver(false); return; }
+      if (cool > 0) cool--;
+      else {
+        holdT++;
+        const rem = holdLimit() - holdT;
+        if (rem > 0 && rem <= 180 && rem % 60 === 0) Sfx.warn();
+        if (holdT >= holdLimit()) tryDrop(true);
+        if (!anyFree()) { if (++blocked > 90) { gameOver(false); return; } }
+        else blocked = 0;
       }
-    }
+    } else blocked = 0;
+    if (landT > 0 && --landT === 0) Sfx.land(landSize);
     const before = spilled;
     simStep();
     simStep();
@@ -725,6 +924,7 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
       if (fl[i] && --fl[i] === 0) g[i] = 0;
     }
     if (spilled !== before) {
+      Sfx.spill();
       updateHUD();
       if (spilled >= SPILL_MAX) { gameOver(true); return; }
     }
@@ -736,6 +936,7 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     const r = theta * Math.PI / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
     const bw = FW * c + FH * s, bh = FW * s + FH * c;
     const k = Math.min(1, AW / bw, AH / bh);
+    K = k;
     frame.style.transform = 'rotate(' + theta.toFixed(2) + 'deg) scale(' + k.toFixed(4) + ')';
   }
 
@@ -763,17 +964,44 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
     ctx.stroke();
     ctx.restore();
 
-    if (state === 'play' && nextBlob) {
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = PAL[nextBlob.c - 1];
-      ctx.fillRect(nextBlob.x * CELL, 0, nextBlob.w * CELL, 4 * DPR);
+    if (state === 'play' && cur && cool === 0 && GY >= 0) {
+      const x0 = Math.round(dropX), col = PAL[cur.c - 1];
+      ctx.save();
+      if (GY === 1 && GX === 0) { // landing guide
+        let top = H;
+        for (let x = x0; x < x0 + cur.w; x++) {
+          let y = cur.h;
+          while (y < H && !g[y * W + x]) y++;
+          if (y < top) top = y;
+        }
+        ctx.globalAlpha = 0.14;
+        ctx.fillStyle = col;
+        ctx.fillRect(x0 * CELL, cur.h * CELL, cur.w * CELL, Math.max(0, top - cur.h) * CELL);
+      }
+      ctx.globalAlpha = 0.92; // the sand being held
+      ctx.fillStyle = col;
+      for (let y = 0; y < cur.h; y++) for (let x = 0; x < cur.w; x++) {
+        if ((y === 0 || y === cur.h - 1) && (x === 0 || x === cur.w - 1)) continue;
+        ctx.fillRect((x0 + x) * CELL, y * CELL, CELL, CELL);
+      }
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = inkColor;
+      ctx.lineWidth = 1.5 * DPR;
+      ctx.setLineDash([4 * DPR, 3 * DPR]);
+      ctx.strokeRect(x0 * CELL + 0.5, 0.5, cur.w * CELL - 1, cur.h * CELL - 1);
+      const ratio = Math.max(0, 1 - holdT / holdLimit()); // time until auto-drop
       ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
+      ctx.fillStyle = ratio < 0.25 ? dangerColor : col;
+      ctx.fillRect(0, 0, cv.width * ratio, 3 * DPR);
+      ctx.restore();
     }
   }
 
   function readTheme() {
     const cs = getComputedStyle(document.documentElement);
     dangerColor = cs.getPropertyValue('--danger').trim() || dangerColor;
+    inkColor = cs.getPropertyValue('--ink').trim() || inkColor;
   }
 
   let last = 0, acc = 0, themeT = 0;
@@ -809,6 +1037,15 @@ const FB_BASE = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+
+  const muteBtn = $('muteBtn');
+  const syncMute = () => { muteBtn.classList.toggle('off', Sfx.muted); muteBtn.setAttribute('aria-pressed', String(Sfx.muted)); };
+  muteBtn.addEventListener('click', () => {
+    Sfx.setMuted(!Sfx.muted);
+    syncMute();
+    if (!Sfx.muted) Sfx.click();
+  });
+  syncMute();
 
   buildTitle();
   buildRules();
