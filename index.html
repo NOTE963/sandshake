@@ -54,6 +54,47 @@ body {
 .next { display: flex; flex-direction: column; gap: 4px; margin-left: auto; }
 .next span { line-height: 1.1; }
 .next i { display: block; width: 26px; height: 22px; border-radius: 7px; background: #999; }
+#vsBar {
+  flex: none;
+  height: 96px;
+  display: grid;
+  grid-template-columns: 1fr 96px 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+}
+#vsBar[hidden] { display: none; }
+.vsSide { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.vsSide.r { align-items: flex-end; text-align: right; }
+.vsSide span { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vsSide b { font-family: "DotGothic16", sans-serif; font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }
+#miniWrap { width: 96px; height: 96px; display: grid; place-items: center; }
+#miniFrame {
+  border: 3px solid var(--frame);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--well);
+  line-height: 0;
+  will-change: transform;
+}
+#miniCv { display: block; width: 60px; height: 72px; image-rendering: pixelated; }
+#vsSub { white-space: pre-line; }
+.waitmsg { margin: 4px 0 14px; font-size: 14px; color: var(--muted); line-height: 1.6; min-height: 3.2em; white-space: pre-line; }
+.dots { display: flex; justify-content: center; gap: 8px; margin: 0 0 18px; }
+.dots i { width: 12px; height: 12px; border-radius: 3px; animation: hop 1s ease-in-out infinite; }
+.dots i:nth-child(1) { background: #ef5b5b; }
+.dots i:nth-child(2) { background: #f7b733; animation-delay: .15s; }
+.dots i:nth-child(3) { background: #1fb5a5; animation-delay: .3s; }
+@keyframes hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .dots i { animation: none; } }
+.kwbox { display: flex; gap: 8px; margin: 10px 0 12px; }
+.kwbox input {
+  flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--ink);
+  background: var(--well); border: 2px solid var(--frame); border-radius: 12px; padding: 10px 12px;
+  -webkit-user-select: text; user-select: text;
+}
+.kwbox input:focus-visible { outline: 3px solid #4a6cf7; outline-offset: 2px; }
+.kwbox .btn { width: auto; padding: 10px 14px; font-size: 14px; white-space: nowrap; }
 #muteBtn {
   flex: none;
   width: 40px; height: 40px;
@@ -219,13 +260,18 @@ body {
 <body>
 <header class="hud">
   <div class="stat"><span>スコア</span><b id="score">0</b></div>
-  <div class="stat"><span>レベル</span><b id="lv">1</b></div>
+  <div class="stat"><span id="lvLabel">レベル</span><b id="lv">1</b></div>
   <div class="stat"><span>こぼれ</span><b id="spill" class="sm">0/80</b></div>
   <div class="next"><span>つぎ</span><i id="chip"></i></div>
   <button id="muteBtn" type="button" aria-label="効果音のオン/オフ" aria-pressed="false">
     <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><g class="waves"><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></g><g class="xmark"><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></g></svg>
   </button>
 </header>
+<div id="vsBar" hidden>
+  <div class="vsSide"><span id="oppName">あいて</span><b id="oppScore">0</b></div>
+  <div id="miniWrap"><div id="miniFrame"><canvas id="miniCv" width="30" height="36"></canvas></div></div>
+  <div class="vsSide r"><span>おくった砂</span><b id="sentCnt">0</b></div>
+</div>
 <main id="stage">
   <div id="frame"><canvas id="cv"></canvas></div>
   <div id="pop"></div>
@@ -238,6 +284,7 @@ body {
       <p class="bestline" id="homeBest"></p>
       <div class="btns">
         <button class="btn primary" type="button" data-act="start">はじめる</button>
+        <button class="btn" type="button" data-act="vs">対戦</button>
         <button class="btn" type="button" data-act="rank">ランキング</button>
         <button class="btn" type="button" data-act="rules">あそびかた</button>
       </div>
@@ -270,6 +317,38 @@ body {
       <div class="btns">
         <button class="btn primary" type="button" data-act="start">もういちど</button>
         <button class="btn" type="button" data-act="rank">ランキング</button>
+        <button class="btn" type="button" data-act="home">ホーム</button>
+      </div>
+    </section>
+
+    <!-- VERSUS: choose -->
+    <section class="card" id="vVs" hidden>
+      <h2>対戦</h2>
+      <p class="tag">2人で同時にプレイ。自分が消した砂が、相手の容器に降りそそぐ。先にあふれたほうが負け。</p>
+      <div class="btns">
+        <button class="btn primary" type="button" data-act="vsRandom">ランダムマッチ</button>
+      </div>
+      <div class="kwbox">
+        <input id="kwIn" type="text" maxlength="12" placeholder="合言葉(12文字まで)" autocomplete="off" aria-label="合言葉">
+        <button class="btn" type="button" data-act="vsKey">合言葉マッチ</button>
+      </div>
+      <button class="btn" type="button" data-act="home">もどる</button>
+    </section>
+
+    <!-- VERSUS: waiting -->
+    <section class="card" id="vWait" hidden>
+      <h2 id="waitT">対戦</h2>
+      <p class="waitmsg" id="waitMsg"></p>
+      <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <button class="btn" type="button" data-act="cancelWait">やめる</button>
+    </section>
+
+    <!-- VERSUS: result -->
+    <section class="card" id="vVsOver" hidden>
+      <h2 id="vsT"></h2>
+      <p class="score" id="vsSub"></p>
+      <div class="btns">
+        <button class="btn primary" type="button" data-act="vs">もういちど対戦</button>
         <button class="btn" type="button" data-act="home">ホーム</button>
       </div>
     </section>
@@ -407,6 +486,9 @@ const Sfx = (() => {
     },
     spill() { if (throttle('spill', 110)) noise(0.09, { type: 'highpass', f0: 3200, vol: 0.05 }); },
     warn() { tone(880, 0.09, { type: 'square', vol: 0.05 }); },
+    send() { noise(0.3, { f0: 600, f1: 3500, q: 0.8, vol: 0.09, att: 0.04 }); tone(660, 0.18, { type: 'triangle', to: 990, vol: 0.09 }); },
+    incoming() { if (throttle('inc', 500)) { tone(180, 0.28, { type: 'sawtooth', to: 110, vol: 0.08 }); noise(0.3, { type: 'lowpass', f0: 500, vol: 0.1 }); } },
+    win() { this.level(); tone(hz(523.25, 28), 0.9, { type: 'sine', vol: 0.09, delay: 0.7 }); },
     over() {
       [392, 349, 294, 220].forEach((f, i) => tone(f, 0.34, { type: 'triangle', vol: 0.17, delay: i * 0.17 }));
       tone(110, 1.0, { type: 'sine', to: 70, vol: 0.2, delay: 0.7 });
@@ -530,10 +612,11 @@ const Sfx = (() => {
   // ============================================================
   //  Screens
   // ============================================================
-  const VIEWS = ['vHome', 'vRules', 'vRank', 'vOver'];
+  const VIEWS = ['vHome', 'vRules', 'vRank', 'vOver', 'vVs', 'vWait', 'vVsOver'];
   function show(id) {
     VIEWS.forEach(v => { $(v).hidden = (v !== id); });
     $('ov').hidden = false;
+    if (id !== 'vVsOver') setVsUi(false);
     if (id === 'vHome') {
       $('homeBest').textContent = best > 0 ? 'ベスト ' + best : '';
     }
@@ -588,7 +671,10 @@ const Sfx = (() => {
       [0, '枠の上は開いている。90°を超えて傾けると砂がこぼれる(その間は砂を落とせない)。こぼれた砂が80粒になると終わり。'],
       [1, '砂が積もって、かたまりを落とせる場所がなくなったら終わり。赤い点線が積もりすぎの目安。'],
       [2, 'スコアは匿名でランキングに載る(登録は最高スコアのみ)。名前はランキング画面で変えられる。'],
-      [3, '効果音は右上のスピーカーボタンでオン/オフできる。']
+      [3, '効果音は右上のスピーカーボタンでオン/オフできる。'],
+      [4, '【対戦】ランダムマッチ、または同じ合言葉を入れた相手と1対1で同時にプレイ。降ってくる砂のかたまりは2人とも同じ順番。'],
+      [0, '【対戦】砂を消すと、消えた砂の半分(連続で消すほど増える)が、同じ色の砂として相手の容器に降りそそぐ。上の小さな容器が相手の様子。「おじゃま」は自分に降ってくる予定の砂の数。'],
+      [1, '【対戦】先に砂があふれる(または80粒こぼす)ほうが負け。相手の接続が切れたときは勝ちになる。']
     ];
     $('rulesList').innerHTML = items.map(([c, t]) => '<li style="--c:' + PAL[c] + '">' + t + '</li>').join('');
   }
@@ -640,13 +726,361 @@ const Sfx = (() => {
     if (a === 'home') show('vHome');
     else if (a === 'rules') show('vRules');
     else if (a === 'rank') openRank();
+    else if (a === 'vs') show('vVs');
+    else if (a === 'vsRandom') startMatch('random');
+    else if (a === 'vsKey') startMatch('kw');
+    else if (a === 'cancelWait') cancelMatch();
   });
+
+  // ============================================================
+  //  Versus mode (Firestore rooms + anonymous auth)
+  // ============================================================
+  const ATK_RATE = 0.5;
+  const MW = W / 2, MH = H / 2;
+  const vsBarEl = $('vsBar');
+  const miniCv = $('miniCv'), mctx = miniCv.getContext('2d');
+  const mimg = mctx.createImageData(MW, MH);
+  const mbuf = new Uint32Array(mimg.data.buffer);
+  let miniTh = 0;
+  const vs = {
+    on: false, ended: false, finishing: false,
+    fs: null, db: null, uid: null, ref: null, myRef: null,
+    host: false, oppUid: null, oppName: '',
+    unsubs: [], mySent: [0, 0, 0, 0, 0], seen: [0, 0, 0, 0, 0], sentTotal: 0,
+    seq: 0, lastSendTick: 0, dirty: false, lastKey: '', lastRecv: 0,
+    oppTh: 0, oppGrid: new Uint8Array(MW * MH), oppBlob: null
+  };
+  let match = null, matchToken = 0;
+
+  function setVsUi(on) {
+    versus = on;
+    vsBarEl.hidden = !on;
+    $('lvLabel').textContent = on ? 'おじゃま' : 'レベル';
+  }
+
+  // ---- compact board snapshot: 2x2 downsample + run-length encoding ----
+  function encodeGrid() {
+    let out = '', prev = -1, run = 0;
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const i = (y * 2) * W + x * 2;
+      const cnt = [0, 0, 0, 0, 0, 0];
+      cnt[g[i]]++; cnt[g[i + 1]]++; cnt[g[i + W]]++; cnt[g[i + W + 1]]++;
+      let v = 0, best = 0;
+      if (4 - cnt[0] >= 2) for (let k = 1; k <= 5; k++) if (cnt[k] > best) { best = cnt[k]; v = k; }
+      if (v === prev) run++;
+      else { if (prev >= 0) out += prev + '' + run + '.'; prev = v; run = 1; }
+    }
+    return out + prev + '' + run + '.';
+  }
+  function decodeGrid(str, dst) {
+    dst.fill(0);
+    let p = 0;
+    for (const t of str.split('.')) {
+      if (!t) continue;
+      const v = t.charCodeAt(0) - 48, n = parseInt(t.slice(1), 10) || 0;
+      for (let k = 0; k < n && p < dst.length; k++) dst[p++] = v;
+    }
+  }
+  function drawMini() {
+    const gr = vs.oppGrid;
+    for (let i = 0; i < gr.length; i++) { const c = gr[i]; mbuf[i] = (c >= 1 && c <= 5) ? pal[(c - 1) * SHADES + 3] : 0; }
+    const b = vs.oppBlob;
+    if (b && b.c >= 1 && b.c <= 5) {
+      const bx = Math.round(b.x / 2), bw = Math.max(1, Math.round(b.w / 2)), bh = Math.max(1, Math.round(b.h / 2));
+      const col = ((pal[(b.c - 1) * SHADES + 5] & 0x00FFFFFF) | 0x99000000) >>> 0;
+      for (let y = 0; y < bh && y < MH; y++) for (let x = bx; x < bx + bw && x < MW; x++) if (!gr[y * MW + x]) mbuf[y * MW + x] = col;
+    }
+    mctx.putImageData(mimg, 0, 0);
+  }
+  function applyMini() {
+    const r = miniTh * Math.PI / 180, c = Math.abs(Math.cos(r)), sn = Math.abs(Math.sin(r));
+    const fw = 66, fh = 75;
+    const bw = fw * c + fh * sn, bh = fw * sn + fh * c;
+    const k = Math.min(1, 92 / bw, 92 / bh);
+    $('miniFrame').style.transform = 'rotate(' + miniTh.toFixed(2) + 'deg) scale(' + k.toFixed(3) + ')';
+  }
+
+  // ---- state sync ----
+  function vsSend() {
+    if (!vs.on || vs.ended) return;
+    const data = {
+      g: encodeGrid(), th: Math.round(thetaT), dx: Math.round(dropX),
+      dc: cur ? cur.c : 0, dw: cur ? cur.w : 0, dh: cur ? cur.h : 0,
+      sc: score, sp: spilled, atk: vs.mySent.slice()
+    };
+    const key = [data.g, data.th, data.dx, data.dc, data.sc, data.sp, data.atk.join()].join('|');
+    if (key === vs.lastKey && vsTicks - vs.lastSendTick < 180) return;
+    vs.lastKey = key; vs.lastSendTick = vsTicks; vs.dirty = false;
+    data.seq = ++vs.seq;
+    data.expireAt = vs.fs.Timestamp.fromMillis(Date.now() + 86400000);
+    vs.fs.setDoc(vs.myRef, data).catch(e => console.warn('state send failed', e));
+  }
+  function onOppState(d) {
+    vs.lastRecv = performance.now();
+    if (typeof d.g === 'string') decodeGrid(d.g, vs.oppGrid);
+    vs.oppTh = d.th || 0;
+    vs.oppBlob = { c: d.dc | 0, w: d.dw | 0, h: d.dh | 0, x: d.dx | 0 };
+    $('oppScore').textContent = d.sc || 0;
+    if (Array.isArray(d.atk)) {
+      let got = 0;
+      for (let k = 0; k < 5; k++) {
+        const n = d.atk[k] | 0;
+        if (n > vs.seen[k]) { const add = n - vs.seen[k]; vs.seen[k] = n; garbageQ[k] = Math.min(600, garbageQ[k] + add); got += add; }
+      }
+      if (got > 0) { Sfx.incoming(); updateHUD(); }
+    }
+    drawMini();
+  }
+
+  // garbage: sent sand pours in from the top as a stream
+  function pourTick() {
+    if (GY < 0) return;
+    let k = 0;
+    while (k < 5 && garbageQ[k] <= 0) k++;
+    if (k >= 5) { pourColor = -1; return; }
+    if (pourColor !== k) { pourColor = k; pourX = 2 + Math.floor(Math.random() * (W - 9)); }
+    let placed = 0;
+    for (let a = 0; a < 5 && garbageQ[k] > 0; a++) {
+      const i = pourX + a;
+      if (!g[i]) { g[i] = k + 1; sh[i] = Math.floor(Math.random() * SHADES); garbageQ[k]--; placed++; }
+    }
+    if (!placed) pourX = Math.max(0, Math.min(W - 5, pourX + (Math.random() < 0.5 ? -3 : 3)));
+    else if (frameNo % 6 === 0) updateHUD();
+    if (garbageQ.every(n => n <= 0)) updateHUD();
+  }
+  function vsTick() {
+    vsTicks++;
+    pourTick();
+    const since = vsTicks - vs.lastSendTick;
+    if (since >= 60 || (vs.dirty && since >= 20)) vsSend();
+    if (vsTicks > 300 && vs.lastRecv && performance.now() - vs.lastRecv > 12000) vsFinish(vs.oppUid, 'disconnect');
+  }
+
+  // ---- countdown / result ----
+  function countdown() {
+    const steps = ['3', '2', '1', 'GO!'];
+    let i = 0;
+    const step = () => {
+      if (!vs.on || state !== 'count') return;
+      showPop(steps[i]);
+      if (i === 3) Sfx.start(); else Sfx.warn();
+      i++;
+      if (i < steps.length) setTimeout(step, 800);
+      else setTimeout(() => { if (vs.on && state === 'count') { state = 'play'; vs.lastRecv = performance.now(); } }, 500);
+    };
+    step();
+  }
+  function teardownVersus() {
+    vs.unsubs.forEach(u => { try { u(); } catch (e) {} });
+    vs.unsubs = [];
+    vs.on = false;
+  }
+  function endVersus(d) {
+    if (vs.ended) return;
+    vs.ended = true;
+    const win = d.winnerUid === vs.uid;
+    const reason = d.reason || '';
+    state = 'over';
+    dragOn = false;
+    teardownVersus();
+    let why;
+    if (reason === 'disconnect') why = win ? '相手の接続が切れました' : '接続が切れました';
+    else if (reason === 'spill') why = win ? '相手の砂がこぼれすぎました' : '砂がこぼれすぎました';
+    else why = win ? '相手の砂があふれました' : '砂があふれました';
+    $('vsT').textContent = win ? 'かち!' : 'まけ…';
+    $('vsSub').textContent = why + '\nあなた ' + score + ' / ' + vs.oppName + ' ' + $('oppScore').textContent;
+    show('vVsOver');
+    if (win) Sfx.win(); else Sfx.over();
+    try { navigator.vibrate && navigator.vibrate(win ? [40, 30, 40] : [80, 40, 80]); } catch (e) {}
+  }
+  async function vsFinish(loserUid, reason) {
+    if (!vs.on || vs.finishing || vs.ended) return;
+    vs.finishing = true;
+    state = 'wait';
+    let data;
+    try {
+      data = await vs.fs.runTransaction(vs.db, async tx => {
+        const snap = await tx.get(vs.ref);
+        const d = snap.data();
+        if (d.status === 'playing') {
+          const winner = loserUid === d.hostUid ? d.guestUid : d.hostUid;
+          tx.update(vs.ref, { status: 'finished', winnerUid: winner, reason });
+          return { winnerUid: winner, reason };
+        }
+        return d;
+      });
+    } catch (e) {
+      console.error(e);
+      data = { winnerUid: loserUid === vs.uid ? vs.oppUid : vs.uid, reason };
+    }
+    endVersus(data);
+  }
+
+  function launchVersus(info) {
+    stopMatchSearch();
+    const { fs, db, uid } = info.fb;
+    Object.assign(vs, {
+      on: true, ended: false, finishing: false, fs, db, uid,
+      ref: fs.doc(db, 'rooms', info.rid),
+      myRef: fs.doc(db, 'rooms', info.rid, 'states', uid),
+      host: info.host, oppUid: info.oppUid, oppName: info.oppName,
+      sentTotal: 0, seq: 0, lastSendTick: 0, dirty: false, lastKey: '',
+      oppTh: 0, oppBlob: null, lastRecv: performance.now()
+    });
+    vs.mySent.fill(0); vs.seen.fill(0); vs.oppGrid.fill(0);
+    miniTh = 0;
+    $('oppName').textContent = info.oppName;
+    $('oppScore').textContent = '0';
+    $('sentCnt').textContent = '0';
+    drawMini();
+    vs.unsubs.push(fs.onSnapshot(vs.ref, snap => {
+      const d = snap.data();
+      if (d && d.status === 'finished' && !vs.ended) endVersus(d);
+    }));
+    vs.unsubs.push(fs.onSnapshot(fs.doc(db, 'rooms', info.rid, 'states', info.oppUid), snap => {
+      const d = snap.data();
+      if (d) onOppState(d);
+    }));
+    startGame({ seed: info.seed });
+  }
+
+  // ---- matchmaking ----
+  const kwKey = s => 'k:' + [...String(s).normalize('NFKC').trim().toLowerCase()].slice(0, 12).join('');
+  const isFresh = d => {
+    const hb = d.hostBeat && d.hostBeat.toMillis ? d.hostBeat.toMillis() : 0;
+    return Date.now() - hb < 25000;
+  };
+  async function tryJoin(fb, ref) {
+    const { fs, db, uid } = fb;
+    const seed = 1 + Math.floor(Math.random() * 2147483646);
+    try {
+      return await fs.runTransaction(db, async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('gone');
+        const d = snap.data();
+        if (d.status !== 'waiting' || d.hostUid === uid) throw new Error('taken');
+        tx.update(ref, { status: 'playing', guestUid: uid, guestName: playerName, seed });
+        return { hostUid: d.hostUid, hostName: d.hostName || 'あいて', seed };
+      });
+    } catch (e) { return null; }
+  }
+  function stopMatchSearch() {
+    matchToken++;
+    if (match) {
+      match.timers.forEach(t => clearInterval(t));
+      if (match.unsub) { try { match.unsub(); } catch (e) {} }
+    }
+    match = null;
+  }
+  async function cancelMatch() {
+    const m = match;
+    stopMatchSearch();
+    if (m && m.ref && m.fb) { try { await m.fb.fs.updateDoc(m.ref, { status: 'cancelled' }); } catch (e) {} }
+    show('vVs');
+  }
+  async function startMatch(kind) {
+    let key = 'random', label = 'ランダムマッチ';
+    if (kind === 'kw') {
+      const raw = $('kwIn').value.normalize('NFKC').trim();
+      if (!raw) { $('kwIn').focus(); return; }
+      key = kwKey(raw);
+      label = '合言葉「' + [...raw].slice(0, 12).join('') + '」';
+    }
+    stopMatchSearch();
+    const token = matchToken;
+    const m = match = { timers: [], unsub: null, ref: null, fb: null };
+    show('vWait');
+    $('waitT').textContent = label;
+    $('waitMsg').textContent = 'つなげています…';
+    try {
+      const fb = await ensureFb();
+      if (matchToken !== token) return;
+      m.fb = fb;
+      const { fs, db, uid } = fb;
+      const col = fs.collection(db, 'rooms');
+      let busy = false;
+      const seek = async maxId => {
+        const snaps = await fs.getDocs(fs.query(col, fs.where('status', '==', 'waiting'), fs.where('key', '==', key), fs.limit(10)));
+        const cands = snaps.docs.filter(d => {
+          const x = d.data();
+          return x.hostUid !== uid && isFresh(x) && (!maxId || d.id < maxId);
+        });
+        for (const d of cands) {
+          if (matchToken !== token) return null;
+          const r = await tryJoin(fb, d.ref);
+          if (r) return { id: d.id, r };
+        }
+        return null;
+      };
+      $('waitMsg').textContent = '相手をさがしています…';
+      const found = await seek(null);
+      if (matchToken !== token) return;
+      if (found) {
+        launchVersus({ fb, rid: found.id, host: false, oppUid: found.r.hostUid, oppName: found.r.hostName, seed: found.r.seed });
+        return;
+      }
+      // nobody waiting: open my own room and wait
+      const ref = fs.doc(col);
+      await fs.setDoc(ref, {
+        mode: kind, key, status: 'waiting',
+        hostUid: uid, hostName: playerName, guestUid: null, guestName: null,
+        seed: 0, createdAt: fs.serverTimestamp(), hostBeat: fs.serverTimestamp(),
+        winnerUid: null, reason: null,
+        expireAt: fs.Timestamp.fromMillis(Date.now() + 86400000)
+      });
+      if (matchToken !== token) { fs.updateDoc(ref, { status: 'cancelled' }).catch(() => {}); return; }
+      m.ref = ref;
+      $('waitMsg').textContent = kind === 'kw'
+        ? '相手が同じ合言葉を入れるのを待っています…\n(友だちにも同じ合言葉を伝えてね)'
+        : '対戦相手を待っています…';
+      $('waitMsg').style.whiteSpace = 'pre-line';
+      m.unsub = fs.onSnapshot(ref, snap => {
+        const d = snap.data();
+        if (!d || matchToken !== token) return;
+        if (d.status === 'playing' && d.guestUid) {
+          launchVersus({ fb, rid: ref.id, host: true, oppUid: d.guestUid, oppName: d.guestName || 'ゲスト', seed: d.seed });
+        }
+      });
+      m.timers.push(setInterval(() => {
+        fs.updateDoc(ref, { hostBeat: fs.serverTimestamp() }).catch(() => {});
+      }, 5000));
+      // two players may open rooms at the same time: the one with the larger room id joins the smaller one
+      m.timers.push(setInterval(async () => {
+        if (busy || matchToken !== token) return;
+        busy = true;
+        try {
+          const f = await seek(ref.id);
+          if (f && matchToken === token) {
+            fs.updateDoc(ref, { status: 'cancelled' }).catch(() => {});
+            launchVersus({ fb, rid: f.id, host: false, oppUid: f.r.hostUid, oppName: f.r.hostName, seed: f.r.seed });
+          }
+        } catch (e) { /* retry next time */ }
+        busy = false;
+      }, 2000));
+    } catch (e) {
+      console.error(e);
+      if (matchToken === token) $('waitMsg').textContent = 'つながりません。通信と Firebase の設定(匿名認証・Firestore・ルール)を確認してください。';
+    }
+  }
 
   // ============================================================
   //  Game
   // ============================================================
-  const numColors = () => Math.min(5, 1 + level);
-  const holdLimit = () => Math.max(240, 720 - (level - 1) * 90); // ticks (60/sec)
+  let versus = false, rng = null, pourColor = -1, pourX = 0, vsTicks = 0;
+  const garbageQ = [0, 0, 0, 0, 0];
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rnd = () => (versus && rng) ? rng() : Math.random();
+  const numColors = () => versus ? 4 : Math.min(5, 1 + level);
+  const holdLimit = () => versus
+    ? Math.max(240, 540 - Math.floor(vsTicks / 1800) * 30)
+    : Math.max(240, 720 - (level - 1) * 90); // ticks (60/sec)
 
   function swap(i, j) {
     let t = g[i]; g[i] = g[j]; g[j] = t;
@@ -654,11 +1088,11 @@ const Sfx = (() => {
   }
 
   function makeBlob() {
-    let c = 1 + Math.floor(Math.random() * numColors());
-    if (c === lastColor && Math.random() < 0.6) c = 1 + Math.floor(Math.random() * numColors());
+    let c = 1 + Math.floor(rnd() * numColors());
+    if (c === lastColor && rnd() < 0.6) c = 1 + Math.floor(rnd() * numColors());
     lastColor = c;
-    const w = 8 + Math.floor(Math.random() * 7);
-    const h = 4 + Math.floor(Math.random() * 3);
+    const w = 8 + Math.floor(rnd() * 7);
+    const h = 4 + Math.floor(rnd() * 3);
     return { c, w, h };
   }
   function areaFree(x0) {
@@ -778,6 +1212,7 @@ const Sfx = (() => {
   function checkClear() {
     visited.fill(0);
     let cleared = 0;
+    const groupsC = [];
     for (let s = 0; s < N; s++) {
       const c = g[s];
       if (!c || fl[s] || visited[s]) continue;
@@ -806,6 +1241,7 @@ const Sfx = (() => {
       if ((tL && tR) || (tT && tB)) {
         for (let k = 0; k < n; k++) fl[list[k]] = 22;
         cleared += n;
+        groupsC.push(c, n);
       }
     }
     if (cleared > 0) {
@@ -813,10 +1249,20 @@ const Sfx = (() => {
       combo = (frameNo - lastClearF <= 240) ? combo + 1 : 0;
       lastClearF = frameNo;
       Sfx.clear(cleared, combo);
+      if (versus && vs.on) {
+        const mult = 1 + 0.2 * Math.min(combo, 5);
+        let sent = 0;
+        for (let q = 0; q < groupsC.length; q += 2) {
+          const amt = Math.floor(groupsC[q + 1] * ATK_RATE * mult);
+          vs.mySent[groupsC[q] - 1] += amt;
+          sent += amt;
+        }
+        if (sent > 0) { vs.dirty = true; vs.sentTotal += sent; $('sentCnt').textContent = vs.sentTotal; Sfx.send(); }
+      }
       showPop('+' + cleared);
       try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
       const nl = 1 + Math.floor(score / 800);
-      if (nl > level) { level = nl; setTimeout(() => showPop('LEVEL ' + level), 700); setTimeout(() => Sfx.level(), 550); }
+      if (!versus && nl > level) { level = nl; setTimeout(() => showPop('LEVEL ' + level), 700); setTimeout(() => Sfx.level(), 550); }
       updateHUD();
     }
   }
@@ -851,7 +1297,7 @@ const Sfx = (() => {
 
   function updateHUD() {
     $('score').textContent = score;
-    $('lv').textContent = level;
+    $('lv').textContent = versus ? garbageQ.reduce((a, b) => a + b, 0) : level;
     const s = $('spill');
     s.textContent = spilled + '/' + SPILL_MAX;
     s.classList.toggle('warn', spilled > SPILL_MAX * 0.5);
@@ -866,6 +1312,7 @@ const Sfx = (() => {
   }
 
   function gameOver(spillOut) {
+    if (versus) { vsFinish(vs.uid, spillOut ? 'spill' : 'full'); return; }
     state = 'over';
     dragging = false; dragOn = false;
     Sfx.over();
@@ -889,7 +1336,10 @@ const Sfx = (() => {
       });
     }
   }
-  function startGame() {
+  function startGame(opts) {
+    rng = opts ? mulberry32(opts.seed) : null;
+    garbageQ.fill(0); pourColor = -1; vsTicks = 0;
+    setVsUi(!!opts);
     g.fill(0); sh.fill(0); fl.fill(0);
     score = 0; level = 1; spilled = 0; blocked = 0; frameNo = 0; lastColor = 0; cool = 0; holdT = 0;
     landT = 0; combo = 0; lastClearF = -9999;
@@ -899,12 +1349,14 @@ const Sfx = (() => {
     dropX = (W - cur.w) / 2;
     updateChip(); updateHUD();
     $('ov').hidden = true;
-    state = 'play';
+    state = versus ? 'count' : 'play';
+    if (versus) countdown();
   }
 
   function tick() {
     if (state !== 'play') return;
     setGravity();
+    if (versus) { vsTick(); if (state !== 'play') return; }
     if (GY >= 0) {
       if (cool > 0) cool--;
       else {
@@ -1017,6 +1469,10 @@ const Sfx = (() => {
       theta = Math.abs(d) < 0.05 ? thetaT : theta + d * Math.min(1, dt * 0.014);
     }
     applyTransform();
+    if (!vsBarEl.hidden) {
+      miniTh += (vs.oppTh - miniTh) * Math.min(1, dt * 0.014);
+      applyMini();
+    }
     if (t - themeT > 500) { readTheme(); themeT = t; }
     render(t);
   }
