@@ -600,9 +600,14 @@ const Sfx = (() => {
       await fs.setDoc(ref, { name: playerName, score: sc, level: lv, updatedAt: fs.serverTimestamp() });
       mine = sc;
     }
-    const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', mine)));
-    return { mine, rank: cnt.data().count + 1 };
+    let rank = null;
+    try {
+      const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', mine)));
+      rank = cnt.data().count + 1;
+    } catch (e) { console.warn('rank lookup failed', e); }
+    return { mine, rank };
   }
+  const errTag = e => (e && (e.code || e.message)) ? String(e.code || e.message).slice(0, 60) : 'unknown';
 
   async function loadRanking() {
     const { fs, db, uid } = await ensureFb();
@@ -614,8 +619,11 @@ const Sfx = (() => {
     const mySnap = await fs.getDoc(fs.doc(db, 'scores', uid));
     if (mySnap.exists()) {
       const s = mySnap.data().score;
-      const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', s)));
-      me = { score: s, rank: cnt.data().count + 1 };
+      me = { score: s, rank: null };
+      try {
+        const cnt = await fs.getCountFromServer(fs.query(fs.collection(db, 'scores'), fs.where('score', '>', s)));
+        me.rank = cnt.data().count + 1;
+      } catch (e) { console.warn('rank lookup failed', e); }
     }
     return { rows, uid, me };
   }
@@ -708,7 +716,7 @@ const Sfx = (() => {
       if (!rows.length) {
         st.textContent = 'まだ誰も登録していません。最初の1位をねらおう!';
       } else {
-        st.textContent = me ? 'あなたは ' + me.rank + '位(' + me.score + '点)' : 'まだスコアが登録されていません';
+        st.textContent = me ? 'あなたは ' + (me.rank ? me.rank + '位' : '') + '(' + me.score + '点)' : 'まだスコアが登録されていません';
       }
       rows.forEach((r, i) => {
         const li = document.createElement('li');
@@ -721,7 +729,7 @@ const Sfx = (() => {
       });
     } catch (e) {
       console.error(e);
-      st.textContent = 'ランキングにつながりません。通信と Firebase の設定(匿名認証・Firestore・ルール)を確認してください。';
+      st.textContent = 'ランキングにつながりません(' + errTag(e) + ')。通信と Firebase の設定(匿名認証・Firestore・ルール)を確認してください。';
     }
   }
 
@@ -1509,11 +1517,16 @@ const Sfx = (() => {
     if (finalScore > 0) {
       $('ovRank').textContent = 'ランキングに登録中…';
       submitScore(finalScore, finalLevel).then(r => {
-        if (state === 'over') $('ovRank').textContent = 'ランキング ' + r.rank + '位(あなたの最高 ' + r.mine + '点)';
+        if (state !== 'over') return;
+        $('ovRank').textContent = r.rank
+          ? 'ランキング ' + r.rank + '位(あなたの最高 ' + r.mine + '点)'
+          : 'ランキングに登録しました(あなたの最高 ' + r.mine + '点)';
       }).catch(e => {
         console.error(e);
-        if (state === 'over') $('ovRank').textContent = 'ランキングにつながりませんでした';
+        if (state === 'over') $('ovRank').textContent = 'ランキングに登録できませんでした(' + errTag(e) + ')';
       });
+    } else {
+      $('ovRank').textContent = '0点はランキングに載りません';
     }
   }
   function startGame(opts) {
