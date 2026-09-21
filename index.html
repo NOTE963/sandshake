@@ -86,6 +86,18 @@ body {
   100% { box-shadow: 0 0 0 10px transparent; background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .oppCard.hit .miniWrap { animation: none; background: color-mix(in srgb, var(--danger) 25%, transparent); } }
+.pad[hidden] { display: none; }
+#specBar {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 3;
+  padding: 6px 14px; border-radius: 999px; white-space: nowrap; max-width: calc(100% - 24px);
+  overflow: hidden; text-overflow: ellipsis;
+  background: var(--panel); border: 2px solid var(--frame);
+  font-size: 13px; font-weight: 800; pointer-events: none;
+}
+#specBar[hidden] { display: none; }
+#frame.spec { border-style: dashed; }
+body.spec .oppCard:not(.dead) { cursor: pointer; }
+.oppCard.watch .miniWrap { outline: 3px solid var(--ink); outline-offset: 1px; }
 .oppInfo { display: flex; align-items: baseline; justify-content: center; gap: 5px; max-width: 100%; line-height: 1.2; }
 .oppInfo span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .oppInfo b { font-family: "DotGothic16", sans-serif; font-weight: 400; font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -288,6 +300,7 @@ body {
 <main id="stage">
   <div id="frame"><canvas id="cv"></canvas></div>
   <div id="pop"></div>
+  <div id="specBar" hidden></div>
 
   <div class="ov" id="ov">
     <!-- HOME -->
@@ -372,13 +385,18 @@ body {
     </section>
   </div>
 </main>
-<div class="pad">
+<div class="pad" id="pad">
   <button id="bL" type="button" aria-label="左に傾ける">
     <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>ひだりに傾ける
   </button>
   <button id="bR" type="button" aria-label="右に傾ける">
     みぎに傾ける<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
   </button>
+</div>
+<div class="pad" id="specPad" hidden>
+  <button id="specPrev" type="button">◀ 前の人</button>
+  <button id="specLeave" type="button">観戦をやめる</button>
+  <button id="specNext" type="button">次の人 ▶</button>
 </div>
 
 <script>
@@ -700,7 +718,7 @@ const Sfx = (() => {
       [3, '効果音は右上のスピーカーボタンでオン/オフできる。'],
       [4, '【対戦】ランダムマッチ、または同じ合言葉で、最大4人が同時にプレイ。降ってくる砂のかたまりは全員同じ順番。ランダムマッチは、2人以上そろって10秒たつか、4人そろうと始まる。'],
       [0, '【対戦】砂を消すと、消えた砂の半分(連続で消すほど増える)が、自分以外の生き残りのうちランダムな1人に、同じ色の砂として降りそそぐ。上の小さな容器が相手たちの様子。「おじゃま」は自分に降ってくる予定の砂の数。'],
-      [1, '【対戦】砂があふれる(または80粒こぼす)と脱落。最後まで残った人が1位。接続が切れた人も脱落になる。']
+      [1, '【対戦】砂があふれる(または80粒こぼす)と脱落。最後まで残った人が1位。接続が切れた人も脱落になる。脱落しても、ほかの人の対戦が続いていれば観戦できる(上の小さな容器をタップすると見る相手を切り替えられる)。']
     ];
     $('rulesList').innerHTML = items.map(([c, t]) => '<li style="--c:' + PAL[c] + '">' + t + '</li>').join('');
   }
@@ -770,8 +788,10 @@ const Sfx = (() => {
     on: false, ended: false,
     fs: null, db: null, uid: null, rid: null, ref: null, myRef: null, hitsCol: null,
     opps: [], unsubs: [], seenHits: new Set(),
-    seq: 0, lastSendTick: 0, dirty: false, lastKey: ''
+    seq: 0, lastSendTick: 0, dirty: false, lastKey: '',
+    dead: false, myPlace: 0, myReason: ''
   };
+  let specWatch = null;
   let match = null, matchToken = 0;
 
   function setVsUi(on) {
@@ -822,11 +842,13 @@ const Sfx = (() => {
       card.append(wrap, info);
       vsBarEl.appendChild(card);
       const c2 = cvs.getContext('2d'), im = c2.createImageData(MW, MH);
-      return {
+      const o = {
         uid: pl.uid, name: pl.name, grid: new Uint8Array(MW * MH), th: 0, miniTh: 0, blob: null,
         score: 0, dead: false, gone: false, place: 0, lastRecv: performance.now(),
-        card, frameEl, ctx: c2, img: im, buf: new Uint32Array(im.data.buffer), scEl: sc
+        card, frameEl, ctx: c2, img: im, buf: new Uint32Array(im.data.buffer), scEl: sc, spill: 0
       };
+      card.addEventListener('click', () => { if (state === 'spectate' && !o.dead && !o.gone) setWatch(o); });
+      return o;
     });
     vs.opps.forEach(drawMini);
   }
@@ -857,6 +879,7 @@ const Sfx = (() => {
   function markDead(o) {
     o.card.classList.add('dead');
     drawMini(o);
+    if (state === 'spectate' && o === specWatch) pickWatch();
   }
 
   // ---- state sync ----
@@ -882,11 +905,13 @@ const Sfx = (() => {
     o.blob = { c: d.dc | 0, w: d.dw | 0, h: d.dh | 0, x: d.dx | 0 };
     o.score = d.sc | 0;
     o.scEl.textContent = o.score;
+    o.spill = d.sp | 0;
+    if (o === specWatch) syncSpecHud();
     if (d.dead === true && !o.dead) { o.dead = true; o.place = d.place | 0; markDead(o); checkWin(); return; }
     drawMini(o);
   }
   function onHit(id, d) {
-    if (vs.seenHits.has(id)) return;
+    if (vs.dead || vs.seenHits.has(id)) return;
     vs.seenHits.add(id);
     let got = 0;
     if (Array.isArray(d.a)) for (let k = 0; k < 5; k++) {
@@ -947,22 +972,117 @@ const Sfx = (() => {
 
   // ---- elimination / victory ----
   const aliveCount = () => 1 + vs.opps.filter(o => !o.dead && !o.gone).length;
+  const aliveOpps = () => vs.opps.filter(o => !o.dead && !o.gone);
   function checkWin() {
-    if (!vs.on || vs.ended || state !== 'play') return;
+    if (!vs.on || vs.ended) return;
+    if (state === 'spectate') { if (aliveOpps().length <= 1) endSpectate(); return; }
+    if (state !== 'play') return;
     if (vs.opps.every(o => o.dead || o.gone)) vsWin();
   }
   function vsEliminate(reason) {
-    if (!vs.on || vs.ended) return;
+    if (!vs.on || vs.ended || vs.dead) return;
     const place = aliveCount();
     vs.fs.setDoc(vs.myRef, stateData(true, place)).catch(() => {});
-    finishVersus(place, reason);
+    vs.dead = true; vs.myPlace = place; vs.myReason = reason;
+    if (place >= 3) startSpectate();      // others are still fighting: watch them
+    else finishVersus(place, reason);
   }
   function vsWin() {
     if (!vs.on || vs.ended) return;
     vs.fs.updateDoc(vs.ref, { status: 'finished', winnerUid: vs.uid, reason: 'last' }).catch(() => {});
     finishVersus(1, 'last');
   }
+
+  // ---- spectating (after being eliminated while the match goes on) ----
+  function startSpectate() {
+    state = 'spectate';
+    dragOn = false;
+    document.body.classList.add('spec');
+    frame.classList.add('spec');
+    $('pad').hidden = true;
+    $('specPad').hidden = false;
+    $('lv').textContent = '-';
+    pickWatch();
+    Sfx.over();
+    try { navigator.vibrate && navigator.vibrate([80, 40, 80]); } catch (e) {}
+  }
+  function pickWatch() {
+    const a = aliveOpps();
+    if (!a.length) { specWatch = null; return; }
+    setWatch(a.includes(specWatch) ? specWatch : a[0]);
+  }
+  function setWatch(o) {
+    specWatch = o;
+    vs.opps.forEach(x => x.card.classList.toggle('watch', x === o));
+    const b = $('specBar');
+    b.hidden = false;
+    b.textContent = '脱落 ' + vs.myPlace + '位 ・ 観戦中: ' + o.name;
+    syncSpecHud();
+  }
+  function syncSpecHud() {
+    const o = specWatch;
+    if (!o) return;
+    $('score').textContent = o.score;
+    const sp = $('spill');
+    sp.textContent = o.spill + '/' + SPILL_MAX;
+    sp.classList.toggle('warn', o.spill > SPILL_MAX * 0.5);
+    $('chip').style.background = (o.blob && o.blob.c >= 1 && o.blob.c <= 5) ? PAL[o.blob.c - 1] : '#999';
+  }
+  function stepWatch(dir) {
+    const a = aliveOpps();
+    if (!a.length) return;
+    let i = a.indexOf(specWatch);
+    i = (i + dir + a.length) % a.length;
+    setWatch(a[i]);
+    Sfx.click();
+  }
+  function endSpectUi() {
+    specWatch = null;
+    document.body.classList.remove('spec');
+    frame.classList.remove('spec');
+    $('pad').hidden = false;
+    $('specPad').hidden = true;
+    $('specBar').hidden = true;
+    vs.opps.forEach(x => x.card.classList.remove('watch'));
+  }
+  // paint the watched player's (downsampled) board into the main frame
+  function fillSpectate(o) {
+    const gr = o.grid;
+    for (let y = 0; y < H; y++) {
+      const row = (y >> 1) * MW;
+      for (let x = 0; x < W; x++) {
+        const c = gr[row + (x >> 1)];
+        buf[y * W + x] = (c >= 1 && c <= 5) ? pal[(c - 1) * SHADES + 3] : 0;
+      }
+    }
+    const b = o.blob;
+    if (b && b.c >= 1 && b.c <= 5) {
+      const col = ((pal[(b.c - 1) * SHADES + 5] & 0x00FFFFFF) | 0x99000000) >>> 0;
+      for (let y = 0; y < b.h && y < H; y++) for (let x = b.x; x < b.x + b.w && x < W; x++) if (!buf[y * W + x]) buf[y * W + x] = col;
+    }
+  }
+  function specTick() {
+    vsTicks++;
+    if (vsTicks % 30 === 0) {
+      const now = performance.now();
+      for (const o of vs.opps) {
+        if (!o.dead && !o.gone && now - o.lastRecv > 12000) { o.gone = true; o.place = 0; markDead(o); }
+      }
+    }
+    checkWin();
+  }
+  function endSpectate(winnerUid) {
+    if (vs.ended) return;
+    const w = winnerUid ? vs.opps.find(o => o.uid === winnerUid) : aliveOpps()[0];
+    if (w) { w.dead = true; w.place = 1; }
+    finishVersus(vs.myPlace, vs.myReason);
+  }
+  $('specPrev').addEventListener('click', () => stepWatch(-1));
+  $('specNext').addEventListener('click', () => stepWatch(1));
+  $('specLeave').addEventListener('click', () => { if (state === 'spectate') { Sfx.click(); finishVersus(vs.myPlace, vs.myReason); } });
+
   function finishVersus(place, reason) {
+    endSpectUi();
     vs.ended = true;
     state = 'over';
     dragOn = false;
@@ -1022,7 +1142,7 @@ const Sfx = (() => {
       ref: fs.doc(db, 'rooms', info.rid),
       myRef: fs.doc(db, 'rooms', info.rid, 'states', uid),
       hitsCol: fs.collection(db, 'rooms', info.rid, 'hits'),
-      seq: 0, lastSendTick: 0, dirty: false, lastKey: ''
+      seq: 0, lastSendTick: 0, dirty: false, lastKey: '', dead: false, myPlace: 0, myReason: ''
     });
     vs.seenHits.clear();
     vs.unsubs = [];
@@ -1030,7 +1150,9 @@ const Sfx = (() => {
     buildCards(others);
     vs.unsubs.push(fs.onSnapshot(vs.ref, snap => {
       const d = snap.data();
-      if (d && d.status === 'finished' && d.winnerUid !== uid && !vs.ended) finishVersus(2, 'gone');
+      if (d && d.status === 'finished' && d.winnerUid !== uid && !vs.ended) {
+        if (vs.dead) endSpectate(d.winnerUid); else finishVersus(2, 'gone');
+      }
     }));
     vs.unsubs.push(fs.onSnapshot(fs.collection(db, 'rooms', info.rid, 'states'), snap => {
       snap.docChanges().forEach(ch => {
@@ -1530,6 +1652,7 @@ const Sfx = (() => {
     }
   }
   function startGame(opts) {
+    endSpectUi();
     rng = opts ? mulberry32(opts.seed) : null;
     garbageQ.fill(0); pourColor = -1; vsTicks = 0;
     setVsUi(!!opts);
@@ -1547,6 +1670,7 @@ const Sfx = (() => {
   }
 
   function tick() {
+    if (state === 'spectate') { specTick(); return; }
     if (state !== 'play') return;
     setGravity();
     if (versus) { vsTick(); if (state !== 'play') return; }
@@ -1586,7 +1710,8 @@ const Sfx = (() => {
   }
 
   function render(t) {
-    for (let i = 0; i < N; i++) {
+    if (state === 'spectate' && specWatch) fillSpectate(specWatch);
+    else for (let i = 0; i < N; i++) {
       const c = g[i];
       if (!c) { buf[i] = 0; continue; }
       const f = fl[i];
@@ -1657,6 +1782,7 @@ const Sfx = (() => {
     last = t;
     acc += dt;
     while (acc >= 16.667) { tick(); acc -= 16.667; }
+    if (state === 'spectate' && specWatch) thetaT = specWatch.th;
     if (!dragging) {
       const d = thetaT - theta;
       theta = Math.abs(d) < 0.05 ? thetaT : theta + d * Math.min(1, dt * 0.014);
