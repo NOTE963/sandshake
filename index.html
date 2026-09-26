@@ -298,6 +298,7 @@ body.spec .oppCard:not(.dead) { cursor: pointer; }
   <div class="stat"><span>スコア</span><b id="score">0</b></div>
   <div class="stat"><span id="lvLabel">レベル</span><b id="lv">1</b></div>
   <div class="stat"><span>こぼれ</span><b id="spill" class="sm">0/80</b></div>
+  <div class="stat" id="rankTimerStat" hidden><span>のこり</span><b id="rankTimer">2:00</b></div>
   <div class="next"><span>つぎ</span><i id="chip"></i></div>
   <button id="muteBtn" type="button" aria-label="効果音のオン/オフ" aria-pressed="false">
     <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><g class="waves"><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></g><g class="xmark"><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></g></svg>
@@ -364,7 +365,7 @@ body.spec .oppCard:not(.dead) { cursor: pointer; }
       <h2>対戦</h2>
       <p class="tag">最大5人で同時にプレイ。自分が消した砂が、ほかの誰かの容器に降りそそぐ。最後まで残った人の勝ち。</p>
       <div class="btns">
-        <button class="btn primary" type="button" data-act="rankBot">ランクマッチ(CPU)</button>
+        <button class="btn primary" type="button" data-act="rankBot">ランクマッチ</button>
         <button class="btn" type="button" data-act="vsRandom">ランダムマッチ</button>
       </div>
       <div class="kwbox">
@@ -381,9 +382,9 @@ body.spec .oppCard:not(.dead) { cursor: pointer; }
         <img id="rsBadgeImg" class="badge" alt="" style="width: 64px; height: 64px;">
         <span id="rsBadgeText" style="font-size: 20px; font-weight: 800;"></span>
       </div>
-      <p class="tag">とても強いCPUと1対1。勝てばRPが上がり、負ければ下がる。</p>
+      <p class="tag">とても強いCPUと、2分間のスコアくらべ。終了時にスコアが高いほうの勝ち。勝てばRPが上がり、負ければ下がる。</p>
       <div class="btns">
-        <button class="btn primary" type="button" data-act="rankBotStart">スタート</button>
+        <button class="btn primary" type="button" data-act="rankBotStart">スタート(2分)</button>
         <button class="btn" type="button" data-act="vs">もどる</button>
       </div>
     </section>
@@ -608,6 +609,7 @@ const Sfx = (() => {
   let cur = null, nextBlob = null, flip = false;
   let dropX = 0, cool = 0, holdT = 0, dragOn = false, fc0 = 0, dx0 = 0, K = 1;
   let landT = 0, landSize = 0, combo = 0, lastClearF = -9999, lastTickX = -1;
+  let raceMode = false, raceTimeLeft = 0, playerFrozen = false;
   let theta = 0, thetaT = 0, dragging = false, dragX0 = 0, dragTh0 = 0;
   let GX = 0, GY = 1;
   let dangerColor = '#e5484d', inkColor = '#1c2233';
@@ -809,9 +811,10 @@ const Sfx = (() => {
       [1, '砂が積もって、かたまりを落とせる場所がなくなったら終わり。赤い点線が積もりすぎの目安。'],
       [2, 'スコアは匿名でランキングに載る(登録は最高スコアのみ)。名前はランキング画面で変えられる。'],
       [3, '効果音は右上のスピーカーボタンでオン/オフできる。'],
-      [4, '【対戦】ランクマッチ(CPU)は、とても強いコンピューターと1対1。すぐに始まる。ランダムマッチ・合言葉マッチは、最大5人の人間どうしの対戦。ランダムマッチは、2人以上そろって10秒たつか、5人そろうと始まる。'],
-      [0, '【ランクマッチ】勝つとRP(ランクポイント)が増え、負けると減る。ランクは ブロンズ4〜1、シルバー4〜1、ゴールド4〜1、プラチナ4〜1、ダイヤモンド4〜1、トップ、エイリアン の順(数字は4が下、1が上)。'],
-      [1, '【ランクマッチ】CPUは最初からとても強いうえ、ランクが上がるほどさらに強くなる。落とす速さ・置く場所のうまさ・送ってくる砂の量が上がっていく。短い間に続けて消すと連鎖になり、送ってくる砂がさらに増える。容器が6割を超えて埋まったときや、こちらから砂が送られてきたときは、45度まで傾けて対応してくる。'],
+      [4, '【ランクマッチ】とても強いCPUと2分間のスコアくらべ。「対戦」→「ランクマッチ」→「スタート」で始まる。あそび方はふだんの「はじめる」と同じ。2分たつと自動的に終わり、そのときのスコアが高いほうの勝ち。'],
+      [0, '【ランクマッチ】途中で自分の砂があふれても、その時点のスコアのまま(そこで止まって)、CPUと時計は最後まで進む。砂を送り合うことはない、純粋なスコア勝負。'],
+      [1, '【ランクマッチ】勝つとRP(ランクポイント)が増え、負けると減る(引き分けは変わらず)。ランクは ブロンズ4〜1、シルバー4〜1、ゴールド4〜1、プラチナ4〜1、ダイヤモンド4〜1、トップ、エイリアン の順(数字は4が下、1が上)。'],
+      [1, '【対戦】(人間どうし)ランダムマッチ・合言葉マッチは、最大5人でのリアルタイム対戦。ランダムマッチは、2人以上そろって10秒たつか、5人そろうと始まる。'],
       [0, '【対戦】砂を消すと、消えた砂の半分(連続で消すほど増える)が、自分以外の生き残りのうちランダムな1人に、同じ色の砂として降りそそぐ。上の小さな容器が相手たちの様子。「おじゃま」は自分に降ってくる予定の砂の数。'],
       [1, '【対戦】砂があふれる(または80粒こぼす)と脱落。最後まで残った人が1位。接続が切れた人も脱落になる。脱落しても、ほかの人の対戦が続いていれば観戦できる(上の小さな容器をタップすると見る相手を切り替えられる)。']
     ];
@@ -884,7 +887,7 @@ const Sfx = (() => {
     else if (a === 'cancelWait') cancelMatch();
     else if (a === 'lobbyStart') hostStart();
     else if (a === 'rankBot') openRankStart();
-    else if (a === 'rankBotStart') startBotMatch();
+    else if (a === 'rankBotStart') startRankMatch();
   });
 
   // ============================================================
@@ -1101,6 +1104,7 @@ const Sfx = (() => {
   const aliveOpps = () => vs.opps.filter(o => !o.dead && !o.gone);
   function checkWin() {
     if (!vs.on || vs.ended) return;
+    if (raceMode) return; // race mode only ends via the clock (finishRace), not by elimination
     if (state === 'spectate') { if (aliveOpps().length <= 1) endSpectate(); return; }
     if (state !== 'play') return;
     if (vs.opps.every(o => o.dead || o.gone)) vsWin();
@@ -1331,12 +1335,12 @@ const Sfx = (() => {
   function botDifficulty() { return Math.min(1, Math.max(0, rp) / 3000); }
   function botHoldLimit() {
     const d = botDifficulty();
-    const base = 6 - Math.floor(d * 3);                           // 6 ticks (d=0, ~0.1s) down to 3 (d=1)
-    return Math.max(2, base - Math.floor(vsTicks / 300));         // keeps ramping over a long match
+    const base = 4 - Math.floor(d * 2);                           // 4 ticks (d=0, ~0.07s) down to 2 (d=1)
+    return Math.max(1, base - Math.floor(vsTicks / 260));         // keeps ramping over a long match
   }
-  function botCoolAfterDrop() { return Math.max(0, 2 - Math.floor(botDifficulty() * 2)); }
-  function botSimSteps() { return 7 + (botDifficulty() > 0.5 ? 1 : 0); }
-  function botAtkRate() { return 1.4 + botDifficulty() * 0.3; } // 1.4 .. 1.7 (sends far more than it even cleared)
+  function botCoolAfterDrop() { return 0; }
+  function botSimSteps() { return 9 + (botDifficulty() > 0.5 ? 1 : 0); }
+  function botAtkRate() { return 1.8 + botDifficulty() * 0.4; } // 1.8 .. 2.2 (sends far more than it even cleared)
 
   // extent (min/max x) of a color's cells on the board, or null if it has none
   function botColorExtent(c) {
@@ -1353,7 +1357,7 @@ const Sfx = (() => {
     let c = 0;
     // most of the time, keep feeding whichever color is closest to bridging both walls,
     // instead of scattering effort across colors: this is what actually gets clears out.
-    if (Math.random() < 0.92) {
+    if (Math.random() < 0.97) {
       let bestGap = Infinity;
       for (let k = 1; k <= nc; k++) {
         const ex = botColorExtent(k);
@@ -1364,7 +1368,7 @@ const Sfx = (() => {
     }
     if (!c) c = 1 + Math.floor(Math.random() * nc);
     botLastColor = c;
-    return { c, w: 8 + Math.floor(Math.random() * 7), h: 4 + Math.floor(Math.random() * 3) };
+    return { c, w: 10 + Math.floor(Math.random() * 8), h: 5 + Math.floor(Math.random() * 3) };
   }
   function botAreaFree(x0, w, h) {
     if (x0 < 0 || x0 + w > W) return false;
@@ -1552,7 +1556,7 @@ const Sfx = (() => {
         const amt = Math.floor(groups[q + 1] * rate);
         a[groups[q] - 1] += amt; sent += amt;
       }
-      if (sent > 0) botSendToPlayer(a, botCombo);
+      if (sent > 0 && !raceMode) botSendToPlayer(a, botCombo);
       if (botCombo >= 2) showPop(botCombo + '連鎖!');
     }
   }
@@ -1604,6 +1608,7 @@ const Sfx = (() => {
     markDead(o);
   }
   function botTick() {
+    if (vs.opps[0] && vs.opps[0].dead) return; // frozen (topped out): keep the final score, stop simulating
     if (--botTiltTimer <= 0) {
       botDecideTilt();
       botTiltTimer = botThetaT === 0 ? (40 + Math.floor(Math.random() * 30)) : (20 + Math.floor(Math.random() * 20));
@@ -2050,7 +2055,7 @@ const Sfx = (() => {
       combo = (frameNo - lastClearF <= 240) ? combo + 1 : 0;
       lastClearF = frameNo;
       Sfx.clear(cleared, combo);
-      if (versus && vs.on) vsAttack(groupsC, combo);
+      if (versus && vs.on && !raceMode) vsAttack(groupsC, combo);
       showPop('+' + cleared);
       try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
       const nl = 1 + Math.floor(score / 800);
@@ -2104,6 +2109,7 @@ const Sfx = (() => {
   }
 
   function gameOver(spillOut) {
+    if (raceMode) { if (!playerFrozen) { playerFrozen = true; Sfx.over(); } return; }
     if (versus) { vsEliminate(spillOut ? 'spill' : 'full'); return; }
     state = 'over';
     dragging = false; dragOn = false;
@@ -2133,8 +2139,81 @@ const Sfx = (() => {
       $('ovRank').textContent = '0点はランキングに載りません';
     }
   }
+  function updateRankTimer() {
+    const s = Math.max(0, Math.ceil(raceTimeLeft / 60));
+    const m = Math.floor(s / 60), ss = s % 60;
+    $('rankTimer').textContent = m + ':' + String(ss).padStart(2, '0');
+  }
+  function startRankMatch() {
+    stopMatchSearch();
+    botMode = true;
+    Object.assign(vs, {
+      on: true, ended: false, fs: null, db: null, uid: null, rid: null, ref: null, myRef: null, hitsCol: null,
+      dead: false, myPlace: 0, myReason: ''
+    });
+    vs.seenHits.clear();
+    vs.unsubs = [];
+    buildCards([{ uid: 'bot', name: BOT_NAME }]);
+    resetBot();
+    startGame({ seed: 1 + Math.floor(Math.random() * 2147483646) });
+    raceMode = true;
+    raceTimeLeft = 120 * 60; // 2 minutes at 60 ticks/sec
+    $('rankTimerStat').hidden = false;
+    updateRankTimer();
+  }
+  function finishRace() {
+    raceMode = false;
+    state = 'over';
+    dragging = false; dragOn = false;
+    $('rankTimerStat').hidden = true;
+    const finalScore = score, finalLevel = level;
+    const finalBotScore = botScore;
+    const win = finalScore > finalBotScore, draw = finalScore === finalBotScore;
+    $('vsT').textContent = draw ? 'ひきわけ' : (win ? 'かち!' : 'まけ…');
+    $('vsSub').textContent = 'タイムアップ! 2分間のスコアくらべ';
+    const rows = [
+      { name: playerName + '(あなた)', score: finalScore, me: true },
+      { name: BOT_NAME, score: finalBotScore }
+    ];
+    rows.sort((a, b) => b.score - a.score);
+    const ol = $('vsRes');
+    ol.innerHTML = '';
+    rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.me) li.className = 'me';
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = (i + 1);
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name;
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = r.score;
+      li.append(n, nm, sc);
+      ol.appendChild(li);
+    });
+    const isBest = finalScore > best;
+    if (isBest) { best = finalScore; try { localStorage.setItem('sandshake-best', String(best)); } catch (e) {} }
+    const rm = $('vsRankMsg'), tierEl = $('vsTier');
+    rm.textContent = finalScore > 0 ? (isBest ? 'あなたの自己ベストを更新!' : 'あなたの最高 ' + best + '点') : '';
+    tierEl.textContent = 'ランク更新中…';
+    show('vVsOver');
+    if (win) Sfx.win(); else if (!draw) Sfx.over();
+    try { navigator.vibrate && navigator.vibrate(win ? [40, 30, 40] : [80, 40, 80]); } catch (e) {}
+
+    const delta = win ? RANK_WIN : (draw ? 0 : RANK_LOSE);
+    applyRankDelta(delta, finalScore, finalLevel).then(r => {
+      rp = r.rp; best = Math.max(best, r.best);
+      try { localStorage.setItem('sandshake-rp', String(rp)); } catch (e) {}
+      try { localStorage.setItem('sandshake-best', String(best)); } catch (e) {}
+      const ti = tierInfo(rp);
+      const sign = delta >= 0 ? '+' : '';
+      const icon = TIER_ICON[ti.name] ? '<img class="badge" alt="" src="' + TIER_ICON[ti.name] + '" style="width:28px;height:28px;vertical-align:-8px;margin-right:4px;">' : '';
+      tierEl.innerHTML = icon + 'ランク ' + ti.name + '(RP ' + rp + ', ' + sign + delta + ')';
+    }).catch(e => {
+      console.error(e);
+      tierEl.textContent = 'ランク更新に失敗しました(' + errTag(e) + ')';
+    });
+  }
   function startGame(opts) {
     endSpectUi();
+    raceMode = false; playerFrozen = false;
+    $('rankTimerStat').hidden = true;
     rng = opts ? mulberry32(opts.seed) : null;
     garbageQ.fill(0); pourColor = -1; vsTicks = 0;
     setVsUi(!!opts);
@@ -2156,6 +2235,13 @@ const Sfx = (() => {
     if (state !== 'play') return;
     setGravity();
     if (versus) { vsTick(); if (state !== 'play') return; }
+    if (raceMode) {
+      raceTimeLeft--;
+      if (raceTimeLeft % 15 === 0) updateRankTimer();
+      const botDone = vs.opps[0] && vs.opps[0].dead;
+      if (raceTimeLeft <= 0 || (playerFrozen && botDone)) { finishRace(); return; }
+      if (playerFrozen) return; // topped out early: board stays frozen, but the clock and CPU keep going
+    }
     if (GY >= 0) {
       if (cool > 0) cool--;
       else {
